@@ -15,9 +15,9 @@ from src.auto_map import ModelMap
 from src.evaluator import WikiText, LM_eval
 from src.ptq import PTQ
 
-parser = argparse.ArgumentParser(description='Llama')
+parser = argparse.ArgumentParser(description='HBQ')
 parser.add_argument('--config_dir', type=str, default='config/llama3.2-3b_full_wikitext.yaml', help="Path to the configuration file (.yaml)")
-parser.add_argument('--quant_config', type=str, default='config/none.yaml', help="Path to the quantization configuration file (.yaml)")
+parser.add_argument('--quant_config', type=str, default='config/baseline.yaml', help="Path to the quantization configuration file (.yaml)")
 args = parser.parse_args()
 
 class CompressLLM():
@@ -124,15 +124,7 @@ class CompressLLM():
                 result = evaluator.run()
                 results.append(result)
                 self.logger.info(f"{task} result: {results}")
-
-        # # elif self.config["dataset"]["name"] == "gsm8k":
-        # #     evaluator = GSM8K(self.config_dir, self.model, self.tokenizer)
-        # elif self.config["dataset"]["name"] == "wikitext":
-        #     evaluator = WikiText(faked_quantized_model, self.tokenizer)
-        #     results = evaluator.run()
-        #     self.logger.info(f"Wikitext2 PPL: {results:.4f}")
-        # else:
-        #     raise ValueError(f"Task is not specified in the config file")   
+                  
         return results
 
 def starter():

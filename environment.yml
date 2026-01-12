@@ -1,0 +1,43 @@
+name: hbq
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - ipython
+  - ipykernel
+  - jupyterlab
+  - pip:
+      - torch==2.8.0
+      - torchvision==0.23.0
+      - transformers==4.48.0
+      - accelerate==1.4.0
+      - datasets==2.21.0
+      - evaluate==0.4.3
+      - peft==0.14.0
+      - einops==0.8.1
+      - timm==1.0.14
+      - triton==3.4.0
+      - lm-eval==0.4.8
+      - bert-score==0.3.13
+      - sacrebleu==2.5.1
+      - rouge-score==0.1.2
+      - tqdm
+      - plotly
+      - fire
+      - sentencepiece
+      - psutil
+      - jinja2
+      - safetensors
+      - huggingface-hub
+      - regex
+      - nvitop
+      - holistictraceanalysis
+      - fxpmath==0.4.9

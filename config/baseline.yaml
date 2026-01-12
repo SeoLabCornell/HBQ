@@ -1,3 +1,4 @@
+# Baseline, no quantization
 quantization:
   xqtype: none
   wqtype: none
