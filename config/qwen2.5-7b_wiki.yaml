@@ -1,0 +1,9 @@
+model:
+  model_type: Qwen/Qwen2.5-7B
+
+eval:
+  tasks: [wikitext]
+
+save:
+  run_dir: "save/Qwen2.5-7B/"
+  logger: "wiki.log"

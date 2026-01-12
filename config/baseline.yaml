@@ -1,0 +1,7 @@
+quantization:
+  xqtype: none
+  wqtype: none
+
+accumulation:
+  type: fp32
+  block_size: None

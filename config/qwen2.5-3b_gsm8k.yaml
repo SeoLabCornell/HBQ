@@ -1,0 +1,9 @@
+model:
+  model_type: Qwen/Qwen2.5-3B
+
+eval:
+  tasks: [gsm8k]
+
+save:
+  run_dir: "save/Qwen2.5-3B/"
+  logger: "gsm8k.log"

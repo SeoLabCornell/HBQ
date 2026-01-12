@@ -1,0 +1,45 @@
+quantization:
+  xqtype: mxfp
+  wqtype: mxfp
+
+  # quantize before non-linear
+  quant_before_hadamard: False
+  quant_before_silu: False
+  quant_before_rms_norm: False
+
+  # quantize output layer (lm head)
+  quant_output_layer: False
+
+  # quantize post-rope QK (input of QK^T)
+  quant_post_rope_q: False
+
+  # quantize post-rope K and V
+  quant_k_cache: False
+  quant_v_cache: False
+  quant_4b_kv: False # if True, use KV4, otherwise use act quantizer
+
+  # quantize attention weight
+  quant_attn_wgt: False
+
+block_quant:
+  act_ebit: 2
+  act_mbit: 5
+  act_block_size: 32
+  act_sc_ebit: 5
+  act_sc_mbit: 0
+
+  wgt_ebit: 2
+  wgt_mbit: 5
+  wgt_block_size: 32
+  wgt_sc_ebit: 5
+  wgt_sc_mbit: 0
+
+  # per tensor scale for NVFP format
+  wgt_per_tensor_scale: False
+  act_per_tensor_scale: False
+
+  # use subnormal for scaling factor
+  scale_allow_subnormal: False
+
+  # use rounding for qk_proj in MXFP format
+  qk_mx_round: True

@@ -1,0 +1,9 @@
+model:
+  model_type: meta-llama/Meta-Llama-3-8B
+
+eval:
+  tasks: [winogrande]
+
+save:
+  run_dir: "save/Llama-3-8B-hf/"
+  logger: "winogrande.log"

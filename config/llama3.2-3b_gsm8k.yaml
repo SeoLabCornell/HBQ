@@ -1,0 +1,9 @@
+model:
+  model_type: meta-llama/Llama-3.2-3B
+
+eval:
+  tasks: [gsm8k_cot_llama]
+
+save:
+  run_dir: "save/Llama-3.2-3B-hf/"
+  logger: "gsm8k.log"

@@ -1,0 +1,9 @@
+model:
+  model_type: Qwen/Qwen2.5-3B
+
+eval:
+  tasks: [winogrande]
+
+save:
+  run_dir: "save/Qwen2.5-3B/"
+  logger: "winogrande.log"

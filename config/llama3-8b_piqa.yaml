@@ -1,0 +1,9 @@
+model:
+  model_type: meta-llama/Meta-Llama-3-8B
+
+eval:
+  tasks: [piqa]
+
+save:
+  run_dir: "save/Llama-3-8B-hf/"
+  logger: "piqa.log"

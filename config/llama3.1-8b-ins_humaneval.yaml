@@ -1,0 +1,9 @@
+model:
+  model_type: meta-llama/Llama-3.1-8B-Instruct
+
+eval:
+  tasks: [humaneval]
+
+save:
+  run_dir: "save/Llama-3.1-8B-hf/"
+  logger: "humaneval.log"

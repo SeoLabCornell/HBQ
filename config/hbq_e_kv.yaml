@@ -1,0 +1,54 @@
+quantization:
+  xqtype: hbq
+  wqtype: hbq
+
+  # quantize before non-linear
+  quant_before_hadamard: False
+  quant_before_silu: False
+  quant_before_rms_norm: False
+
+  # quantize post-rope QK (input of QK^T)
+  quant_post_rope_q: True
+
+  # quantize post-rope K and V
+  quant_k_cache: True
+  quant_v_cache: True
+  quant_4b_kv: True # if True, use KV4, otherwise use act quantizer
+
+  # quantize attention weight
+  quant_attn_wgt: True
+  quant_attn_wgt_use_quant_kernel: False # L2 quantization causes torch._dynamo.exc.RecompileLimitExceeded: cache_size_limit reached
+
+block_quant:
+  act_ebit: 2
+  act_mbit: 2
+  act_block_size: 128
+  act_sc_ebit: 5
+  act_sc_mbit: 3
+
+  wgt_ebit: 2
+  wgt_mbit: 1
+  wgt_block_size: 128
+  wgt_sc_ebit: 5
+  wgt_sc_mbit: 3
+
+  # HBQ quantization
+  wgt_l2_sc_bit: 2
+  wgt_l2_block_size: 32
+  wgt_l2_scheme: "Mix"
+  act_l2_sc_bit: 1
+  act_l2_block_size: 32
+  act_l2_scheme: "INT"
+
+  # per tensor scale for NVFP format
+  wgt_per_tensor_scale: False
+  act_per_tensor_scale: False
+
+  # use subnormal for scaling factor
+  scale_allow_subnormal: False
+
+  # use rounding for qk_proj in MXFP format
+  qk_mx_round: False
+
+accumulation:
+  type: fp32

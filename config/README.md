@@ -1,0 +1,68 @@
+
+# Quantization Configurations
+
+```yaml
+# Quantization Config File Example (nvfp4_kv.yaml)
+quantization: # Model quantization configs
+  abit: 4 # activation precision
+  wbit: 4 # weight precision
+  num_samples: 512
+  xqtype: mxfp # act quantizer
+  wqtype: mxfp # wgt quantizer
+  smooth: False
+
+  # quantize before non-linear
+  quant_before_hadamard: False
+  quant_before_silu: False
+  quant_before_rms_norm: False
+
+  # quantize output layer (lm head)
+  quant_output_layer: False
+
+  # quantize post-rope Q (input of QK^T)
+  quant_post_rope_q: True
+
+  # quantize post-rope K and V
+  quant_4b_kv: True # if True, use KV4, otherwise use act quantizer
+  quant_k_cache: True
+  quant_v_cache: True
+
+  # quantize attention weight
+  quant_attn_wgt: True
+
+micro_scaling: # Block quantization configs
+  # act BQ configs
+  act_ebit: 2
+  act_mbit: 1
+  act_block_size: 16
+  act_sc_ebit: 5
+  act_sc_mbit: 3
+
+  # wgt BQ configs
+  wgt_ebit: 2
+  wgt_mbit: 1
+  wgt_block_size: 16
+  wgt_sc_ebit: 5
+  wgt_sc_mbit: 3
+
+  # per tensor scale for NVFP format, activate this if using E4M3 for sc
+  wgt_per_tensor_scale: False
+  act_per_tensor_scale: False
+
+  # use subnormal for scaling factor
+  scale_allow_subnormal: False
+
+  # use rounding for qk_proj in MXFP format
+  qk_mx_round: False
+
+  # use ceil for scale quantization
+  act_scale_use_ceil: False
+  wgt_scale_use_ceil: False
+
+accumulation: # Use customize low-precision kernel for accumulation
+  type: fp32
+  block_size: 4
+
+smooth:
+  alpha: 0.85
+```
