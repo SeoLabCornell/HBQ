@@ -16,7 +16,7 @@ from src.evaluator import WikiText, LM_eval
 from src.ptq import PTQ
 
 parser = argparse.ArgumentParser(description='HBQ')
-parser.add_argument('--config_dir', type=str, default='config/llama3.2-3b_full_wikitext.yaml', help="Path to the configuration file (.yaml)")
+parser.add_argument('--config_dir', type=str, default='config/llama3-8b_wiki.yaml', help="Path to the configuration file (.yaml)")
 parser.add_argument('--quant_config', type=str, default='config/baseline.yaml', help="Path to the quantization configuration file (.yaml)")
 args = parser.parse_args()
 

@@ -30,52 +30,52 @@ class PTQ:
         self.logger = logger
 
         # quantizer type
-        self.xqtype = quant_config["quantization"]["xqtype"]
-        self.wqtype = quant_config["quantization"]["wqtype"]
+        self.xqtype = quant_config.get("quantization", {})["xqtype"]
+        self.wqtype = quant_config.get("quantization", {})["wqtype"]
 
         # MX/NVFP format
-        self.a_ebit = quant_config["block_quant"].get("act_ebit", 0)
-        self.a_mbit = quant_config["block_quant"].get("act_mbit", 0)
-        self.a_sc_ebit = quant_config["block_quant"].get("act_sc_ebit", 0)
-        self.a_sc_mbit = quant_config["block_quant"].get("act_sc_mbit", 8)
-        self.a_block_size = quant_config["block_quant"].get("act_block_size", 32)
-        self.a_per_tensor_scale = quant_config["block_quant"].get("act_per_tensor_scale", False)
-        self.w_ebit = quant_config["block_quant"].get("wgt_ebit", 0)
-        self.w_mbit = quant_config["block_quant"].get("wgt_mbit", 0)
-        self.w_sc_ebit = quant_config["block_quant"].get("wgt_sc_ebit", 0)
-        self.w_sc_mbit = quant_config["block_quant"].get("wgt_sc_mbit", 8)
-        self.w_block_size = quant_config["block_quant"].get("wgt_block_size", 32)
-        self.w_per_tensor_scale = quant_config["block_quant"].get("wgt_per_tensor_scale", False)
-        self.scale_allow_subnormal = quant_config["block_quant"].get("scale_allow_subnormal", True)
+        self.a_ebit = quant_config.get("block_quant", {}).get("act_ebit", 0)
+        self.a_mbit = quant_config.get("block_quant", {}).get("act_mbit", 0)
+        self.a_sc_ebit = quant_config.get("block_quant", {}).get("act_sc_ebit", 0)
+        self.a_sc_mbit = quant_config.get("block_quant", {}).get("act_sc_mbit", 8)
+        self.a_block_size = quant_config.get("block_quant", {}).get("act_block_size", 32)
+        self.a_per_tensor_scale = quant_config.get("block_quant", {}).get("act_per_tensor_scale", False)
+        self.w_ebit = quant_config.get("block_quant", {}).get("wgt_ebit", 0)
+        self.w_mbit = quant_config.get("block_quant", {}).get("wgt_mbit", 0)
+        self.w_sc_ebit = quant_config.get("block_quant", {}).get("wgt_sc_ebit", 0)
+        self.w_sc_mbit = quant_config.get("block_quant", {}).get("wgt_sc_mbit", 8)
+        self.w_block_size = quant_config.get("block_quant", {}).get("wgt_block_size", 32)
+        self.w_per_tensor_scale = quant_config.get("block_quant", {}).get("wgt_per_tensor_scale", False)
+        self.scale_allow_subnormal = quant_config.get("block_quant", {}).get("scale_allow_subnormal", True)
 
         # MX format
-        self.qk_mx_round = quant_config["block_quant"].get("qk_mx_round", False)
+        self.qk_mx_round = quant_config.get("block_quant", {}).get("qk_mx_round", False)
 
         # NV format
-        self.act_scale_use_ceil = quant_config["block_quant"].get("act_scale_use_ceil", False)
-        self.wgt_scale_use_ceil = quant_config["block_quant"].get("wgt_scale_use_ceil", False)
+        self.act_scale_use_ceil = quant_config.get("block_quant", {}).get("act_scale_use_ceil", False)
+        self.wgt_scale_use_ceil = quant_config.get("block_quant", {}).get("wgt_scale_use_ceil", False)
 
         # HBQ quantization
-        self.wgt_l2_sc_bit = quant_config["block_quant"].get("wgt_l2_sc_bit", 1)
-        self.wgt_l2_block_size = quant_config["block_quant"].get("wgt_l2_block_size", 4)
-        self.wgt_l2_scheme = quant_config["block_quant"].get("wgt_l2_scheme", "PoT")
-        self.act_l2_sc_bit = quant_config["block_quant"].get("act_l2_sc_bit", 1)
-        self.act_l2_block_size = quant_config["block_quant"].get("act_l2_block_size", 4)
-        self.act_l2_scheme = quant_config["block_quant"].get("act_l2_scheme", "PoT")
+        self.wgt_l2_sc_bit = quant_config.get("block_quant", {}).get("wgt_l2_sc_bit", 1)
+        self.wgt_l2_block_size = quant_config.get("block_quant", {}).get("wgt_l2_block_size", 4)
+        self.wgt_l2_scheme = quant_config.get("block_quant", {}).get("wgt_l2_scheme", "PoT")
+        self.act_l2_sc_bit = quant_config.get("block_quant", {}).get("act_l2_sc_bit", 1)
+        self.act_l2_block_size = quant_config.get("block_quant", {}).get("act_l2_block_size", 4)
+        self.act_l2_scheme = quant_config.get("block_quant", {}).get("act_l2_scheme", "PoT")
 
         # model config
-        self.quant_before_hadamard = quant_config["quantization"].get("quant_before_hadamard", False)
-        self.quant_before_silu = quant_config["quantization"].get("quant_before_silu", False)
-        self.quant_before_rms_norm = quant_config["quantization"].get("quant_before_rms_norm", False)
-        self.quant_embedding_layer = quant_config["quantization"].get("quant_embedding_layer", False)
-        self.quant_output_layer = quant_config["quantization"].get("quant_output_layer", False)
-        self.quant_attn_wgt = quant_config["quantization"].get("quant_attn_wgt", False)
-        self.quant_post_rope_qk = quant_config["quantization"].get("quant_post_rope_qk", False) # deprecated, don't use this
-        self.quant_post_rope_q = quant_config["quantization"].get("quant_post_rope_q", False) # quantize Q after RoPE, enable low precision computation for HW
-        self.quant_4b_kv = quant_config["quantization"].get("quant_4b_kv", False) # if True, use KV4, otherwise use act quantizer
-        self.quant_k_cache = quant_config["quantization"].get("quant_k_cache", False)
-        self.quant_v_cache = quant_config["quantization"].get("quant_v_cache", False)
-        self.quant_attn_wgt_use_quant_kernel = quant_config["quantization"].get("quant_attn_wgt_use_quant_kernel", True)
+        self.quant_before_hadamard = quant_config.get("quantization", {}).get("quant_before_hadamard", False)
+        self.quant_before_silu = quant_config.get("quantization", {}).get("quant_before_silu", False)
+        self.quant_before_rms_norm = quant_config.get("quantization", {}).get("quant_before_rms_norm", False)
+        self.quant_embedding_layer = quant_config.get("quantization", {}).get("quant_embedding_layer", False)
+        self.quant_output_layer = quant_config.get("quantization", {}).get("quant_output_layer", False)
+        self.quant_attn_wgt = quant_config.get("quantization", {}).get("quant_attn_wgt", False)
+        self.quant_post_rope_qk = quant_config.get("quantization", {}).get("quant_post_rope_qk", False) # deprecated, don't use this
+        self.quant_post_rope_q = quant_config.get("quantization", {}).get("quant_post_rope_q", False) # quantize Q after RoPE, enable low precision computation for HW
+        self.quant_4b_kv = quant_config.get("quantization", {}).get("quant_4b_kv", False) # if True, use KV4, otherwise use act quantizer
+        self.quant_k_cache = quant_config.get("quantization", {}).get("quant_k_cache", False)
+        self.quant_v_cache = quant_config.get("quantization", {}).get("quant_v_cache", False)
+        self.quant_attn_wgt_use_quant_kernel = quant_config.get("quantization", {}).get("quant_attn_wgt_use_quant_kernel", True)
 
         # Low precision accumulation
         self.accumulation_type = quant_config.get("accumulation", {}).get("type", "fp32")

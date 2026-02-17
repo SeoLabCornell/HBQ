@@ -4,4 +4,6 @@ quantization:
   wqtype: none
 
 accumulation:
-  type: fp32
+  type: fp16_quant
+  group_size: 128
+  quant_block_size: 32

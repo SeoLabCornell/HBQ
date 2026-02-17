@@ -5,5 +5,5 @@ eval:
   tasks: [mmlu]
 
 save:
-  run_dir: "save/Llama-3.1-8B-hf/"
+  run_dir: "save/Llama-3.1-8B-Ins-hf/"
   logger: "mmlu.log"
