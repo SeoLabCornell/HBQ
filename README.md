@@ -6,6 +6,15 @@ conda env create -f environment.yml
 conda activate hbq
 ```
 
+Build the local CUDA extension:
+
+```bash
+cd blockquant_ext_src
+pip install ninja setuptools wheel
+pip install -e . --no-build-isolation
+cd ..
+```
+
 ## Usage
 ```bash
 python main.py --config_dir {model/benchmark config yaml} --quant_config {quantization config yaml}

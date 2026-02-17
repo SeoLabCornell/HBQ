@@ -4,11 +4,15 @@ CUDA GEMM extension used by HBQ accumulation modes in `src/ops.py`.
 
 ## Build
 
-From this directory:
+With `hbq` activated, build from repo root.
+
+From repo root:
 
 ```bash
-pip install torch ninja setuptools wheel
-pip install -e .
+conda activate hbq
+cd blockquant_ext_src
+pip install ninja setuptools wheel
+pip install -e . --no-build-isolation
 ```
 
 ## Python API
