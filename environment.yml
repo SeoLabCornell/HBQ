@@ -36,7 +36,7 @@ dependencies:
       - psutil
       - jinja2
       - safetensors
-      - huggingface-hub
+      - huggingface-hub==0.36.0
       - regex
       - nvitop
       - holistictraceanalysis
