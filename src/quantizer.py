@@ -379,7 +379,7 @@ class MXINTQuantizer(_QBase):
         )
         return x, axes, orig_shape, padded_shape
    
-    def get_shared_scale(self, x:torch.Tensor, axis=1) -> torch.Tensor:
+    def get_shared_scale(self, x:torch.Tensor) -> torch.Tensor:
         if x.dtype == torch.float32:
             min_normal = FP32_MIN_NORMAL
         elif x.dtype == torch.float16:
@@ -387,7 +387,7 @@ class MXINTQuantizer(_QBase):
         else:
             raise NotImplementedError(f"Non-supported data type: {x.dtype}")
         
-        max_val, _ = torch.max(torch.abs(x), dim=axis, keepdim=True) # abs max
+        max_val, _ = torch.max(torch.abs(x), dim=-1, keepdim=True) # abs max
         ele_emax =  self.nbit-2 # maximum exponent in the element format
         if self.sc_mbit == 0: # conventional MX, shift scaling
             shared_exp = torch.floor(torch.log2(
