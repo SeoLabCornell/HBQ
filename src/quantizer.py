@@ -523,7 +523,7 @@ class HBQQuantizer(MXFPQuantizer):
     MXShift quantization
     Inspired by Microexponent, use fine-grained shift
     """
-    L2_SCHEME = ["PoT", "INT", "FP-1", "FP1", "FP-10", "FP-100", "Mix"]
+    L2_SCHEME = ["PoT", "INT", "SIG-1", "SIG-2", "SIG-3", "SIG-4", "Mix"]
     def __init__(
         self,
         block_size:int=128,
@@ -563,24 +563,24 @@ class HBQQuantizer(MXFPQuantizer):
         l2_scale_range = torch.arange(2**self.l2_sc_bit, device=xg.device, dtype=xg.dtype)
         l2_scale_pot = torch.pow(2, l2_scale_range)
         l2_scale_int = (l2_scale_range+1)
-        l2_scale_fp = 1+l2_scale_range/(2**self.l2_sc_bit) # 1.XX
-        l2_scale_fp1 = 1+(l2_scale_range+1)/(2**self.l2_sc_bit) # 1.XX
-        l2_scale_fp_10 = 1+l2_scale_range/(2**(self.l2_sc_bit+1)) # 1.0X
-        l2_scale_fp_100 = 1+l2_scale_range/(2**(self.l2_sc_bit+2)) # 1.00X
+        l2_scale_sig_1 = 1+l2_scale_range/2 # 1, 1.5, 2, 2.5
+        l2_scale_sig_2 = 1+l2_scale_range/(2**self.l2_sc_bit) # 1.XX
+        l2_scale_sig_3 = 1+l2_scale_range/(2**(self.l2_sc_bit+1)) # 1.0XX
+        l2_scale_sig_4 = 1+l2_scale_range/(2**(self.l2_sc_bit+2)) # 1.00XX
         if self.l2_scheme == "PoT":
             l2_scale_all = l2_scale_pot[..., None]
         elif self.l2_scheme == "INT":
             l2_scale_all = l2_scale_int[..., None]
-        elif self.l2_scheme == "FP-1":
-            l2_scale_all = l2_scale_fp[..., None]
-        elif self.l2_scheme == "FP1":
-            l2_scale_all = l2_scale_fp1[..., None]
-        elif self.l2_scheme == "FP-10":
-            l2_scale_all = l2_scale_fp_10[..., None]
-        elif self.l2_scheme == "FP-100":
-            l2_scale_all = l2_scale_fp_100[..., None]
+        elif self.l2_scheme == "SIG-1":
+            l2_scale_all = l2_scale_sig_1[..., None]
+        elif self.l2_scheme == "SIG-2":
+            l2_scale_all = l2_scale_sig_2[..., None]
+        elif self.l2_scheme == "SIG-3":
+            l2_scale_all = l2_scale_sig_3[..., None]
+        elif self.l2_scheme == "SIG-4":
+            l2_scale_all = l2_scale_sig_4[..., None]
         elif self.l2_scheme == "Mix":
-            l2_scale_all = torch.stack([l2_scale_fp, l2_scale_fp_10], dim=-1)
+            l2_scale_all = torch.stack([l2_scale_sig_2, l2_scale_sig_3], dim=-1)
         else:
             assert False, f"Invalid L2 scheme: {self.l2_scheme}"
 

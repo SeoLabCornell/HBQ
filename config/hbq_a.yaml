@@ -26,23 +26,23 @@ quantization:
 block_quant:
   act_ebit: 2
   act_mbit: 2
-  act_block_size: 64
+  act_block_size: 128
   act_sc_ebit: 5
   act_sc_mbit: 3
 
   wgt_ebit: 2
   wgt_mbit: 1
-  wgt_block_size: 64
+  wgt_block_size: 128
   wgt_sc_ebit: 5
   wgt_sc_mbit: 3
 
   # HBQ quantization
   wgt_l2_sc_bit: 2
-  wgt_l2_block_size: 16
+  wgt_l2_block_size: 8
   wgt_l2_scheme: "Mix"
   act_l2_sc_bit: 2
-  act_l2_block_size: 16
-  act_l2_scheme: "INT"
+  act_l2_block_size: 8
+  act_l2_scheme: "SIG-1"
 
   # per tensor scale for NVFP format
   wgt_per_tensor_scale: False

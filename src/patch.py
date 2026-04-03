@@ -34,14 +34,14 @@ class PatchLlama():
         return module
     
     def attn(self, attn:LlamaAttention):
-        new_attn = QLlamaAttention(attn.config, attn.layer_idx).to(self.model.device)
+        new_attn = QLlamaAttention(attn.config, attn.layer_idx).to(next(attn.parameters()).device)
         new_attn.load_state_dict(attn.state_dict(), strict=False)
 
         new_attn = self.to_half(new_attn)
         return new_attn
 
     def mlp(self, mlp:LlamaMLP):
-        new_module = QLlamaMLP(config=mlp.config).to(self.model.device)
+        new_module = QLlamaMLP(config=mlp.config).to(next(mlp.parameters()).device)
         new_module = new_module.to(torch.float16)
         new_module.load_state_dict(mlp.state_dict(), strict=False)
 

@@ -36,9 +36,9 @@ block_quant:
   wgt_l2_sc_bit: 2
   wgt_l2_block_size: 32
   wgt_l2_scheme: "Mix"
-  act_l2_sc_bit: 1
+  act_l2_sc_bit: 2
   act_l2_block_size: 32
-  act_l2_scheme: "INT"
+  act_l2_scheme: "SIG-1"
 
   # per tensor scale for NVFP format
   wgt_per_tensor_scale: False

@@ -4,3 +4,4 @@ blockquant_ext_src/*.so
 blockquant_ext_src/*.egg-info/
 blockquant_ext_src/build/
 *.pt
+*.png

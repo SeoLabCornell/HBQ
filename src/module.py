@@ -81,11 +81,11 @@ class QLlamaAttention(LlamaAttention):
     def manual_sdpa(self, query:torch.Tensor, key:torch.Tensor, value:torch.Tensor, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
         L, S = query.size(-2), key.size(-2)
         scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
-        attn_bias = torch.zeros(L, S, dtype=query.dtype).cuda()
+        attn_bias = torch.zeros(L, S, dtype=query.dtype).to(query.device)
 
         if is_causal:
             assert attn_mask is None
-            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0).cuda()
+            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0).to(query.device)
             attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
             attn_bias.to(query.dtype)
 
@@ -283,8 +283,8 @@ class QQwen2Attention(Qwen2Attention):
 
         # ====== YOUR QUANTIZATION HOOK LIVES HERE ======
         # Example:
-        # if getattr(self, "quant_attn_wgt", False):
-        #     attn_weights = self.attn_wgt_quantizer.q(attn_weights)
+        if getattr(self, "quant_attn_wgt", False):
+            attn_weights = self.attn_wgt_quantizer.q(attn_weights)
         # ===============================================
 
         # --- attention output: [B, H, L, D] ---
@@ -319,10 +319,10 @@ class QQwen2Attention(Qwen2Attention):
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
         if self.quant_post_rope_q:
             query_states = self.q_proj.aq.q(query_states)
-        if self.quant_k_cache: # post-RoPE quantize K Cache
-            key_states = self.kv_quantizer.q(key_states)
-        if self.quant_v_cache:
-            value_states = self.kv_quantizer.q(value_states)
+        # if self.quant_k_cache: # post-RoPE quantize K Cache
+        #     key_states = self.kv_quantizer.q(key_states)
+        # if self.quant_v_cache:
+        #     value_states = self.kv_quantizer.q(value_states)
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache

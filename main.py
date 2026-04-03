@@ -86,7 +86,7 @@ class CompressLLM():
         model = model_func.fetch()
 
         # map to device
-        model.to(self.device)
+        # model.to(self.device)
         return model
     
     def prepare_tokenizer(self):
