@@ -24,13 +24,13 @@ quantization:
 block_quant:
   act_ebit: 2
   act_mbit: 5
-  act_block_size: 64
+  act_block_size: 16
   act_sc_ebit: 5
   act_sc_mbit: 3
 
   wgt_ebit: 2
   wgt_mbit: 1
-  wgt_block_size: 64
+  wgt_block_size: 16
   wgt_sc_ebit: 5
   wgt_sc_mbit: 3
 

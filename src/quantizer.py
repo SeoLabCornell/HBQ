@@ -519,10 +519,6 @@ class MXFPQuantizer(_QBase):
         return xg
 
 class HBQQuantizer(MXFPQuantizer):
-    """
-    MXShift quantization
-    Inspired by Microexponent, use fine-grained shift
-    """
     L2_SCHEME = ["PoT", "INT", "SIG-1", "SIG-2", "SIG-3", "SIG-4", "Mix"]
     def __init__(
         self,
@@ -531,9 +527,9 @@ class HBQQuantizer(MXFPQuantizer):
         mbit:int=3,
         sc_ebit:int=5,
         sc_mbit:int=3,
-        l2_block_size:int=4,
-        l2_sc_bit:int=1,
-        l2_scheme:str="PoT",
+        l2_block_size:int=32,
+        l2_sc_bit:int=2,
+        l2_scheme:str="SIG-1",
         keep_l2_scale: bool=False,
         per_tensor_scale: bool = False,
         scale_allow_subnormal: bool = False,
@@ -541,6 +537,9 @@ class HBQQuantizer(MXFPQuantizer):
         use_ceil: bool=False,
         use_quant_kernel: bool=True
     ):
+        """
+        Hierarchical Block Quantization, build on top of MXFPQuantizer (for L1 quantization)
+        """
         super().__init__(block_size, ebit, mbit, sc_ebit, sc_mbit, per_tensor_scale, scale_allow_subnormal, use_round, use_ceil, use_quant_kernel)
         assert block_size % l2_block_size == 0, "block_size must be divisible by l2_block_size"
         assert l2_scheme in self.L2_SCHEME, f"Invalid L2 scheme: {l2_scheme}"
