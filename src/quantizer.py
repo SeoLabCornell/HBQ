@@ -352,7 +352,8 @@ class MXINTQuantizer(_QBase):
         sc_mbit: int=0, 
         block_size:int=32, 
         per_tensor_scale: bool = False, 
-        scale_allow_subnormal: bool = False
+        scale_allow_subnormal: bool = False,
+        use_ceil: bool = False
     ):
         """
         MXINT quantization
@@ -371,6 +372,8 @@ class MXINTQuantizer(_QBase):
         self.block_size = block_size
         self.per_tensor_scale = per_tensor_scale
         self.scale_allow_subnormal = scale_allow_subnormal
+        self.shared_exp = None
+        self.use_ceil = use_ceil
         
     def reshape(self, x:torch.Tensor):
         # reshape to blocks along the last dimension
@@ -393,13 +396,18 @@ class MXINTQuantizer(_QBase):
             shared_exp = torch.floor(torch.log2(
                 max_val + min_normal * (max_val == 0).type(max_val.dtype)
             ))
-            emax = 2**(self.sc_ebit-1) - 1
-            emin = -emax
+            # emax and emin depend on your data formats
+            # here we use FP16 for scaling factor tensor in fake quant, so the range for scaling factor will be 2**-14 - 2**15
+            # this clipping matters when all elements are very small (or even all 0s in a block)
+            # making sure scaling factor stays in FP16's range
+            emax = 15
+            emin = -14
             shared_exp = (shared_exp-ele_emax).clip(max=emax, min=emin)
             shared_scale = 2**shared_exp
+            self.shared_exp = shared_exp
         else: # FP scale
             shared_scale = max_val / get_max_norm(ebit=0, mbit=self.nbit)
-            shared_scale = fp_quant(shared_scale, self.sc_ebit, self.sc_mbit, allow_subnormal=self.scale_allow_subnormal)
+            shared_scale = fp_quant(shared_scale, self.sc_ebit, self.sc_mbit, allow_subnormal=self.scale_allow_subnormal, use_ceil=self.use_ceil)
             scale_min = get_min_subnorm(self.sc_ebit, self.sc_mbit) if self.scale_allow_subnormal else get_min_norm(self.sc_ebit, self.sc_mbit)
             shared_scale = shared_scale.clip(min = scale_min) # avoid very small case
         return shared_scale
@@ -409,7 +417,7 @@ class MXINTQuantizer(_QBase):
 
         self.shared_scale = self.get_shared_scale(xg)
         xg = xg / self.shared_scale
-        
+
         xg = torch.sign(xg) *  torch.floor(torch.abs(xg) + 0.5)
         xg = xg.clip(min = -(2**(self.nbit-1)), max = 2**(self.nbit-1)-1)
         
@@ -507,7 +515,7 @@ class MXFPQuantizer(_QBase):
         xg, axes, orig_shape, padded_shape = self.reshape(x)
 
         shared_scale = self.get_shared_scale(xg)
-        
+
         xg = xg / shared_scale
 
         xg = self.lpfp_quant(xg)
@@ -519,7 +527,10 @@ class MXFPQuantizer(_QBase):
         return xg
 
 class HBQQuantizer(MXFPQuantizer):
-    L2_SCHEME = ["PoT", "INT", "SIG-1", "SIG-2", "SIG-3", "SIG-4", "Mix"]
+    """
+    HBQ quantizer, 2-stage quantization
+    """
+    L2_SCHEME = ["PoT", "INT", "SIG-1", "FP-1", "FP1", "FP-10", "FP-100", "Mix"]
     def __init__(
         self,
         block_size:int=128,
@@ -527,9 +538,9 @@ class HBQQuantizer(MXFPQuantizer):
         mbit:int=3,
         sc_ebit:int=5,
         sc_mbit:int=3,
-        l2_block_size:int=32,
-        l2_sc_bit:int=2,
-        l2_scheme:str="SIG-1",
+        l2_block_size:int=4,
+        l2_sc_bit:int=1,
+        l2_scheme:str="PoT",
         keep_l2_scale: bool=False,
         per_tensor_scale: bool = False,
         scale_allow_subnormal: bool = False,
@@ -537,9 +548,6 @@ class HBQQuantizer(MXFPQuantizer):
         use_ceil: bool=False,
         use_quant_kernel: bool=True
     ):
-        """
-        Hierarchical Block Quantization, build on top of MXFPQuantizer (for L1 quantization)
-        """
         super().__init__(block_size, ebit, mbit, sc_ebit, sc_mbit, per_tensor_scale, scale_allow_subnormal, use_round, use_ceil, use_quant_kernel)
         assert block_size % l2_block_size == 0, "block_size must be divisible by l2_block_size"
         assert l2_scheme in self.L2_SCHEME, f"Invalid L2 scheme: {l2_scheme}"
@@ -563,23 +571,26 @@ class HBQQuantizer(MXFPQuantizer):
         l2_scale_pot = torch.pow(2, l2_scale_range)
         l2_scale_int = (l2_scale_range+1)
         l2_scale_sig_1 = 1+l2_scale_range/2 # 1, 1.5, 2, 2.5
-        l2_scale_sig_2 = 1+l2_scale_range/(2**self.l2_sc_bit) # 1.XX
-        l2_scale_sig_3 = 1+l2_scale_range/(2**(self.l2_sc_bit+1)) # 1.0XX
-        l2_scale_sig_4 = 1+l2_scale_range/(2**(self.l2_sc_bit+2)) # 1.00XX
+        l2_scale_fp = 1+l2_scale_range/(2**self.l2_sc_bit) # 1.XX
+        l2_scale_fp1 = 1+(l2_scale_range+1)/(2**self.l2_sc_bit) # 1.XX
+        l2_scale_fp_10 = 1+l2_scale_range/(2**(self.l2_sc_bit+1)) # 1.0X
+        l2_scale_fp_100 = 1+l2_scale_range/(2**(self.l2_sc_bit+2)) # 1.00X
         if self.l2_scheme == "PoT":
             l2_scale_all = l2_scale_pot[..., None]
         elif self.l2_scheme == "INT":
             l2_scale_all = l2_scale_int[..., None]
         elif self.l2_scheme == "SIG-1":
             l2_scale_all = l2_scale_sig_1[..., None]
-        elif self.l2_scheme == "SIG-2":
-            l2_scale_all = l2_scale_sig_2[..., None]
-        elif self.l2_scheme == "SIG-3":
-            l2_scale_all = l2_scale_sig_3[..., None]
-        elif self.l2_scheme == "SIG-4":
-            l2_scale_all = l2_scale_sig_4[..., None]
+        elif self.l2_scheme == "FP-1":
+            l2_scale_all = l2_scale_fp[..., None]
+        elif self.l2_scheme == "FP1":
+            l2_scale_all = l2_scale_fp1[..., None]
+        elif self.l2_scheme == "FP-10":
+            l2_scale_all = l2_scale_fp_10[..., None]
+        elif self.l2_scheme == "FP-100":
+            l2_scale_all = l2_scale_fp_100[..., None]
         elif self.l2_scheme == "Mix":
-            l2_scale_all = torch.stack([l2_scale_sig_2, l2_scale_sig_3], dim=-1)
+            l2_scale_all = torch.stack([l2_scale_fp, l2_scale_fp_10], dim=-1)
         else:
             assert False, f"Invalid L2 scheme: {self.l2_scheme}"
 
@@ -671,3 +682,4 @@ class HBQQuantizer(MXFPQuantizer):
             del self.l2_scale, self.blk_l2_scheme, self.shared_scale # this could cause OOM for activations
 
         return xg_dequant
+

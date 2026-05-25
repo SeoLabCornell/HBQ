@@ -1,4 +1,5 @@
 import math
+import weakref
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -101,6 +102,7 @@ class QLlamaAttention(LlamaAttention):
         attn_weight = torch.dropout(attn_weight, 0, train=True)
         if self.quant_attn_wgt: # quantize attn weight (after softmax)
             attn_weight = self.attn_wgt_quantizer.q(attn_weight)
+
         return attn_weight @ value, attn_weight
 
     # Adapted from LlamaAttention.forward
@@ -146,10 +148,12 @@ class QLlamaAttention(LlamaAttention):
         if self.quant_post_rope_q:
             query_states = self.q_proj.aq.q(query_states)
         if self.quant_k_cache: # post-RoPE quantize K Cache
-            key_states = self.kv_quantizer.q(key_states)
-        if self.quant_v_cache:
-            value_states = self.kv_quantizer.q(value_states)
-
+            key_states = self.kv_quantizer.q(key_states) # (batch, head, tokens, hidden dim)
+        if self.quant_v_cache: 
+            # quantize V cache along token dimension instead of hidden dimension because following matmul is S@V
+            value_states = torch.transpose(value_states, -1, -2).contiguous() # (batch, head, tokens, hidden dim) -> (batch, head, hidden dim, tokens)¸
+            value_states = self.kv_quantizer.q(value_states) 
+            value_states = torch.transpose(value_states, -1, -2).contiguous() # (hidden dim, tokens) -> (batch, head, tokens, hidden dim)
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
@@ -199,6 +203,33 @@ class QQwen2Attention(Qwen2Attention):
         self.quant_v_cache = False
         self.kv_quantizer = None
         self.attn_wgt_quantizer = None
+        self._k_cache_center = None
+        self._k_cache_center_owner = None
+
+    def _quantize_k_cache(self, key_states: torch.Tensor, past_key_value: Optional[Cache]):
+        # Adopt SageAttention2(https://arxiv.org/pdf/2411.10958) K-mean center approach for Qwen2.5
+        # Qwen2.5 K-proj weight tensor has large bias, creating large magnitude activations
+        # If not centered, K cache quantization will fail, resulting unacceptable PPL
+        # Implementation: calculate center during prefill, apply throughout inference
+        if past_key_value is None:
+            if key_states.shape[-2] <= 1:
+                return self.kv_quantizer.q(key_states)
+            center = key_states.mean(dim=-2, keepdim=True).detach()
+            return self.kv_quantizer.q(key_states - center)
+
+        cache_owner = self._k_cache_center_owner() if self._k_cache_center_owner is not None else None
+        if cache_owner is not past_key_value:
+            self._k_cache_center_owner = weakref.ref(past_key_value)
+            cache_is_empty = past_key_value.get_seq_length(self.layer_idx) == 0
+            if cache_is_empty and key_states.shape[-2] > 1:
+                self._k_cache_center = key_states.mean(dim=-2, keepdim=True).detach()
+            else:
+                # A one-token initial prompt does not provide a useful center.
+                self._k_cache_center = None
+
+        if self._k_cache_center is None:
+            return self.kv_quantizer.q(key_states)
+        return self.kv_quantizer.q(key_states - self._k_cache_center)
 
     def manual_spda( # this is working
         self,
@@ -319,10 +350,13 @@ class QQwen2Attention(Qwen2Attention):
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
         if self.quant_post_rope_q:
             query_states = self.q_proj.aq.q(query_states)
-        # if self.quant_k_cache: # post-RoPE quantize K Cache
-        #     key_states = self.kv_quantizer.q(key_states)
-        # if self.quant_v_cache:
-        #     value_states = self.kv_quantizer.q(value_states)
+        if self.quant_k_cache:
+            key_states = self._quantize_k_cache(key_states, past_key_value)
+        if self.quant_v_cache:
+            # quantize V cache along token dimension instead of hidden dimension because following matmul is S@V
+            value_states = value_states.transpose(-1, -2).contiguous()
+            value_states = self.kv_quantizer.q(value_states)
+            value_states = value_states.transpose(-1, -2).contiguous()
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
