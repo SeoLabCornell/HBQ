@@ -84,9 +84,10 @@ class PTQ:
         model_name = str(getattr(model_config, "_name_or_path", "")).lower()
         # On a 48 GB A6000, only Mixtral and Llama 3.1 70B need row-chunked
         # static weight quantization; smaller models keep the faster full-matrix path.
-        self.chunk_static_wgt = (
+        self.large_model_memory_mode = (
             model_type == "mixtral" or "llama-3.1-70b" in model_name
         )
+        self.chunk_static_wgt = self.large_model_memory_mode
 
         # Low precision accumulation
         self.accumulation_type = quant_config.get("accumulation", {}).get("type", "fp32")
@@ -124,7 +125,10 @@ class PTQ:
                 scale_allow_subnormal=self.scale_allow_subnormal,
                 l2_block_size=self.wgt_l2_block_size,
                 l2_sc_bit=self.wgt_l2_sc_bit,
-                l2_scheme=self.wgt_l2_scheme
+                l2_scheme=self.wgt_l2_scheme,
+                # The compiled FP helper recompiles across device_map shards on
+                # Mixtral and Llama 3.1 70B, increasing peak memory on an A6000.
+                use_quant_kernel=not self.large_model_memory_mode
             )
         elif self.wqtype == "none":
             return _QBase()
@@ -162,7 +166,9 @@ class PTQ:
                 scale_allow_subnormal=self.scale_allow_subnormal,
                 l2_block_size=self.act_l2_block_size,
                 l2_sc_bit=self.act_l2_sc_bit,
-                l2_scheme=self.act_l2_scheme
+                l2_scheme=self.act_l2_scheme,
+                # Keep the compiled helper for smaller models where it is faster.
+                use_quant_kernel=not self.large_model_memory_mode
             )
         elif self.xqtype == "none":
             return _QBase()

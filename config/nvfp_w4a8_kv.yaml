@@ -45,6 +45,6 @@ block_quant:
   qk_mx_round: False
 
   # use ceil for scale quantization
-  act_scale_use_ceil: True
+  act_scale_use_ceil: False
   wgt_scale_use_ceil: False
 

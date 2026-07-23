@@ -7,6 +7,7 @@ set auto_write_syn false
 
 
 # Load common variables, artisan standard cells
+# source -verbose "./script/common.lp.syn.tcl"
 # TODO: set your search path here
 set search_path [list "." \
                      ]
@@ -18,24 +19,25 @@ set TARGET_LIBS [list \
 
 set_app_var target_library [concat $TARGET_LIBS]
 set_app_var link_library [concat "*" $TARGET_LIBS]
+# set link_library "* tcbn28hpcplusbwp30p140ssg0p9vm40c.db"
+# set target_library "tcbn28hpcplusbwp30p140ssg0p9vm40c.db"
 
 # Set top level name
-# TODO: set target module top level name
-set top_level "WXAY_MAC_int_MX"
+set top_level "WXAY_MAC_NV"
 
 # set don't use cells
 source dont_use.syn.tcl
 
 # Read verilog files
 set VERILOG_DIR "."
+set MEMORY_DIR "<HOME>/lib/memory"
 
-# TODO: include all verilog source files here
 set RTL_SRC_FILES [list \
-"$VERILOG_DIR/MAC_int.sv" \
-"$VERILOG_DIR/MUL_int.sv" \
-"$VERILOG_DIR/FP_ACCUM.v" \
-"$VERILOG_DIR/DEQUANT.v" \
-"$VERILOG_DIR/params.vh" \
+"$VERILOG_DIR/MAC.sv" \
+"$VERILOG_DIR/FP16_ADDER.v" \
+"$VERILOG_DIR/LP_vector.sv" \
+"$VERILOG_DIR/scale.v" \
+"$VERILOG_DIR/params.vh"
 ]
 
 analyze -format sverilog $RTL_SRC_FILES
@@ -43,6 +45,8 @@ analyze -format sverilog $RTL_SRC_FILES
 elaborate $top_level
 list_designs
 current_design $top_level
+
+link
 
 set clk_period 2
 set rpt_file "./log/${top_level}.${clk_period}.28nm.syn"
@@ -69,11 +73,12 @@ set_clock_uncertainty $clk_uncertainty [get_clocks $clk_name]
 set_clock_transition $clk_transition [get_clocks $clk_name]
 
 set_operating_conditions "tt0p9v25c" -library "tcbn28hpcplusbwp30p140tt0p9v25c" 
+#set_wire_load_model -name "ibm13_wl10" -library "typical" 
 set_wire_load_mode "segmented" 
 
 # set to 10%, 50%
 set typical_input_delay_min 0.2
-set typical_input_delay_max 1.0
+set typical_input_delay_max 1
 set typical_output_delay 0.1
 set typical_wire_load 0.010 
 
@@ -132,6 +137,7 @@ report_design -nosplit > ${rpt_file}
 report_cell -nosplit > ${rpt_file}
 report_port -nosplit -verbose > ${rpt_file}
 report_compile_options -nosplit > ${rpt_file}
+report_clock_gating -multi_stage -nosplit > ${rpt_file}_auto_clock_gating.28nm.rpt
 report_constraint -all_violators -verbose -nosplit > ${rpt_file}
 report_timing -path full -delay max -max_paths $maxpaths -nworst 100 -nosplit > ${rpt_file}_timing.28nm.rpt
 

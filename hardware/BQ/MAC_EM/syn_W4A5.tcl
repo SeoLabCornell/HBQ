@@ -20,7 +20,7 @@ set_app_var target_library [concat $TARGET_LIBS]
 set_app_var link_library [concat "*" $TARGET_LIBS]
 
 # Set top level name
-set top_level "MAC_EM_MX"
+set top_level "MAC_W4A5_EM_NV"
 
 # set don't use cells
 source dont_use.syn.tcl
@@ -66,6 +66,7 @@ set_clock_uncertainty $clk_uncertainty [get_clocks $clk_name]
 #set_propagated_clock [get_clocks $clk_name]
 set_clock_transition $clk_transition [get_clocks $clk_name]
 
+# TODO: set your operating conditions here
 set_operating_conditions "tt0p9v25c" -library "tcbn28hpcplusbwp30p140tt0p9v25c" 
 set_wire_load_mode "segmented" 
 

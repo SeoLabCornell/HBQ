@@ -20,8 +20,7 @@ set_app_var target_library [concat $TARGET_LIBS]
 set_app_var link_library [concat "*" $TARGET_LIBS]
 
 # Set top level name
-# TODO: set target module top level name
-set top_level "WXAY_MAC"
+set top_level "MAC_W4A8_EM_NV"
 
 # set don't use cells
 source dont_use.syn.tcl
@@ -29,10 +28,9 @@ source dont_use.syn.tcl
 # Read verilog files
 set VERILOG_DIR "."
 
-# TODO: include all verilog source files here
 set RTL_SRC_FILES [list \
-"$VERILOG_DIR/MAC_WXAY.sv" \
-"$VERILOG_DIR/MUL_WXAY.sv" \
+"$VERILOG_DIR/MAC_EM.sv" \
+"$VERILOG_DIR/MUL_EM.sv" \
 "$VERILOG_DIR/FP_ACCUM.v" \
 "$VERILOG_DIR/DEQUANT.v" \
 "$VERILOG_DIR/params.vh" \
@@ -68,12 +66,13 @@ set_clock_uncertainty $clk_uncertainty [get_clocks $clk_name]
 #set_propagated_clock [get_clocks $clk_name]
 set_clock_transition $clk_transition [get_clocks $clk_name]
 
+# TODO: set your operating conditions here
 set_operating_conditions "tt0p9v25c" -library "tcbn28hpcplusbwp30p140tt0p9v25c" 
 set_wire_load_mode "segmented" 
 
 # set to 10%, 50%
-set typical_input_delay_min 0.1
-set typical_input_delay_max 0.5
+set typical_input_delay_min 0.2
+set typical_input_delay_max 1.0
 set typical_output_delay 0.1
 set typical_wire_load 0.010 
 

@@ -4,9 +4,9 @@
 // PE and Multipliers
 parameter integer X = 4;  // fixed to 4
 parameter integer Y = 8;  // fixed to 8
-parameter integer B = 128; // 4, 8, 16, 32, 64, 128
-parameter integer E = 2;        // 2, 3, 4, 5
-parameter integer M = 7 - E;    // 5, 4, 3, 2
+parameter integer B = 16; // 4, 8, 16, 32, 64, 128
+parameter integer E = 3;        // 2, 3, 4, 5
+parameter integer M = Y - 1 - E;    // 5, 4, 3, 2
 parameter PRODUCT_WIDTH = (M + 4) + (2 ** E);  // 13, 16, 23, 38
 parameter LEVEL = $clog2(B); // level of adder tree inside multiplier
 

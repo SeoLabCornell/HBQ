@@ -152,10 +152,10 @@ class QLlamaAttention(LlamaAttention):
             key_states = self.kv_quantizer.q(key_states) # (batch, head, tokens, hidden dim)
         if self.quant_v_cache: 
             # quantize V cache along token dimension instead of hidden dimension because following matmul is S@V
-            # value_states = torch.transpose(value_states, -1, -2).contiguous() # (batch, head, tokens, hidden dim) -> (batch, head, hidden dim, tokens)¸
+            value_states = torch.transpose(value_states, -1, -2).contiguous() # (batch, head, tokens, hidden dim) -> (batch, head, hidden dim, tokens)¸
             # breakpoint()
             value_states = self.kv_quantizer.q(value_states) 
-            # value_states = torch.transpose(value_states, -1, -2).contiguous() # (hidden dim, tokens) -> (batch, head, tokens, hidden dim)
+            value_states = torch.transpose(value_states, -1, -2).contiguous() # (hidden dim, tokens) -> (batch, head, tokens, hidden dim)
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}

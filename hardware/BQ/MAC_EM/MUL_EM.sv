@@ -335,6 +335,132 @@ module FP8_4_vector_e5m2 (
 
 endmodule
 
+module FP_W4A5_vector (
+    input  wire                          clk,
+    input  wire [5*B-1:0]                ACT,
+    input  wire [4*B-1:0]                WEIGHT,
+    output reg  signed [PRODUCT_WIDTH+LEVEL-1:0] PSUM
+);
+    wire [PRODUCT_WIDTH*B-1:0] product;
+    wire [PRODUCT_WIDTH+LEVEL-1:0] psum;
+
+    FP4_5_vector_e3m1  mul (
+        .WEIGHT(WEIGHT),
+        .ACT(ACT),
+        .PRODUCT(product)
+    );
+
+    generate
+        if (B == 4) begin : adder_tree
+            ADDER_TREE_4  adder_tree (
+                .fixed_point_in(product),
+                .sum(psum)
+            );
+        end
+        else if (B == 8) begin : adder_tree
+            ADDER_TREE_8  adder_tree (
+                .fixed_point_in(product),
+                .sum(psum)
+            );
+        end
+        else if (B == 16) begin : adder_tree
+            ADDER_TREE_16  adder_tree (
+                .fixed_point_in(product),
+                .sum(psum)
+            );
+        end
+        else if (B == 32) begin : adder_tree
+            ADDER_TREE_32  adder_tree (
+                .fixed_point_in(product),
+                .sum(psum)
+            );
+        end
+        else if (B == 64) begin : adder_tree
+            ADDER_TREE_64  adder_tree (
+                .fixed_point_in(product),
+                .sum(psum)
+            );
+        end
+        else if (B == 128) begin : adder_tree
+            ADDER_TREE_128  adder_tree (
+                .fixed_point_in(product),
+                .sum(psum)
+            );
+        end
+    endgenerate
+
+    // ------------------------------------------------------------------------
+    // Register output
+    // ------------------------------------------------------------------------
+    always @(posedge clk)
+        PSUM <= psum;
+endmodule
+
+/*
+    FP multipliers and convert to fixed point, WXAY
+*/
+
+
+module FP4_5_vector_e3m1 (
+    input  wire [5*B-1:0]           ACT,
+    input  wire [4*B-1:0]           WEIGHT,  
+    output reg  signed [PRODUCT_WIDTH*B-1:0]   PRODUCT
+);
+
+    localparam [1:0] FP4_EXP_BIAS = 2'b01;   // 1
+    localparam [2:0] E3_EXP_BIAS = 3'b011;  // 3
+    // ------------------------------------------------------------------------
+    // Per-element fields (global [0:B-1] arrays)
+    // ------------------------------------------------------------------------
+    wire               act_s       [0:B-1];
+    wire [2:0]         act_e_pre   [0:B-1]; // e3m1 for a5
+    wire               act_m_pre   [0:B-1]; // e3m1 for a5
+    wire               wgt_s       [0:B-1];
+    wire [1:0]         wgt_e_pre   [0:B-1]; // e2m1 for w4
+    wire               wgt_m_pre   [0:B-1]; // e2m1 for w4
+
+    wire signed [3:0]  act_e       [0:B-1]; // range: -2 ~ 4. originally 0 ~ 7, but subtract 3, and exclude -3.
+    wire [1:0]         wgt_e       [0:B-1]; // range: 0 ~ 2. originally 0 ~ 3, but subtract 1, and exlcude -1.
+    wire [1:0]         act_m       [0:B-1]; // add the leading 1 or 0
+    wire [1:0]         wgt_m       [0:B-1]; // add the leading 1 or 0
+
+    wire [3:0]         p_raw       [0:B-1];      // unsigned 4-bit product, 2bit * 2bit
+    wire signed [4:0]  p_sgn       [0:B-1];      // signed 5-bit product
+    wire [3:0]         shift_left_amount       [0:B-1];      // 0-6 left-shift amount
+    wire [3:0]         shift_right_amount      [0:B-1];      // 0-6 right-shift amount
+    wire signed [PRODUCT_WIDTH-1:0] p_shift     [0:B-1];      // shifted, signed 13-bit term, decimal point at bit 2
+
+    // ------------------------------------------------------------------------
+    // Per-element combinational logic (only assign statements inside generate)
+    // ------------------------------------------------------------------------
+    genvar g;
+    generate
+        for (g = 0; g < B; g = g + 1) begin : ELEM
+            assign {act_s[g], act_e_pre[g], act_m_pre[g]} = ACT   [5*g +: 5];
+            assign {wgt_s[g], wgt_e_pre[g], wgt_m_pre[g]} = WEIGHT[4*g +: 4];
+
+            // act exp: -2 ~ 4, wgt exp: 0 ~ 2
+            assign act_e[g] = (act_e_pre[g] == 4'b0000) ? -4'sd2 : $signed({1'b0, act_e_pre[g]}) - $signed({1'b0, E3_EXP_BIAS}); // E3 subnormal exp = -2
+            assign wgt_e[g] = (wgt_e_pre[g] == 2'b00) ? 2'b00 : wgt_e_pre[g] - FP4_EXP_BIAS; // FP4 subnormal exp = 0
+
+            assign act_m[g] = { (act_e_pre[g] != 3'b000), act_m_pre[g] }; // leading 1 for normal, 0 for subnormal
+            assign wgt_m[g] = { (wgt_e_pre[g] != 2'b00), wgt_m_pre[g] }; // leading 1 for normal, 0 for subnormal
+
+            assign p_raw[g]  = act_m[g] * wgt_m[g]; // 1.x * 1.xxxx
+            assign p_sgn[g]  = (act_s[g] ^ wgt_s[g]) ? -$signed({1'b0,p_raw[g]})
+                                                     :  $signed({1'b0,p_raw[g]});
+            assign shift_left_amount[g] = act_e[g] + 2 + wgt_e[g]; // 0 ~ 8
+            assign shift_right_amount[g] = 8 - shift_left_amount[g];
+
+            // FP product -> integer product with implicit scale 2^-10
+            assign p_shift[g] = (shift_right_amount[g] == 8) ?  $signed({p_sgn[g], 8'd0}) >>> 8 : // avoid using 4 bit shifter
+                                                                $signed({p_sgn[g], 8'd0}) >>> shift_right_amount[g][2:0];
+            assign PRODUCT[g*PRODUCT_WIDTH +: PRODUCT_WIDTH] = p_shift[g];
+        end
+    endgenerate
+
+endmodule
+
 
 module ADDER_TREE_4 (
     input  wire [PRODUCT_WIDTH*B-1:0]             fixed_point_in,
