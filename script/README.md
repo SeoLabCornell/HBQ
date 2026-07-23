@@ -31,8 +31,8 @@ Figure 11:
 - HBQ PPL numbers are the same as Figure 10
 - BQ PPL numbers are the same as Figure 6
 
-Table 6: TODO: ptq.py does not have mixtral
-- getting numbers: L2_scale_ablation.py
+Table 6:
+- [v] getting numbers: L2_scale_ablation.py
 
 Table 7:
 - psum_quant.py

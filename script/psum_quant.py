@@ -19,17 +19,17 @@ EVALUATIONS = {
 
 QUANT_CONFIGS = {
     "baseline": {
-        "fp32": ROOT / "config/baseline.yaml",
+        # "fp32": ROOT / "config/baseline.yaml",
         "fp16": ROOT / "config/fp16_accum.yaml",
-        "psum_quant": ROOT / "config/psum_quant.yaml",
+        # "psum_quant": ROOT / "config/psum_quant.yaml",
     },
     "nvfp4": {
-        "fp32": ROOT / "config/nvfp4.yaml",
+        # "fp32": ROOT / "config/nvfp4.yaml",
         "fp16": ROOT / "config/nvfp4_fp16.yaml",
         "psum_quant": ROOT / "config/nvfp4_psum_quant.yaml",
     },
     "hbq_e": {
-        "fp32": ROOT / "config/hbq_e.yaml",
+        # "fp32": ROOT / "config/hbq_e.yaml",
         "fp16": ROOT / "config/hbq_e_fp16.yaml",
         "psum_quant": ROOT / "config/hbq_e_psum_quant.yaml",
     },
