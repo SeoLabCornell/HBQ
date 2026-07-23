@@ -13,12 +13,16 @@ MODEL_LIBRARY_MAP = {
     'meta-llama/Llama-3.2-3B-Instruct': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Llama-3.2-3B': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Llama-3.1-8B-Instruct': ('transformers', 'AutoModelForCausalLM'),
+    'meta-llama/Llama-3.1-70B': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Meta-Llama-3-8B-Instruct': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Llama-3.1-8B': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Meta-Llama-3-8B': ('transformers', 'AutoModelForCausalLM'),
+    'deepseek-ai/DeepSeek-R1-Distill-Llama-8B': ('transformers', 'AutoModelForCausalLM'),
+    'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B': ('transformers', 'AutoModelForCausalLM'),
     'Qwen/Qwen2.5-3B': ('transformers', 'AutoModelForCausalLM'),
     'Qwen/Qwen2.5-7B': ('transformers', 'AutoModelForCausalLM'),
     'Qwen/Qwen2.5-7B-Instruct': ('transformers', 'AutoModelForCausalLM'),
+    'mistralai/Mixtral-8x7B-v0.1': ('transformers', 'AutoModelForCausalLM'),
 }
 
 

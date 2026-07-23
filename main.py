@@ -4,13 +4,21 @@ import time
 sys.path.append("./")
 
 import torch
+
+# Avoid FP16 reduced-precision reductions producing infs in large Llama linear layers.
+# We test FP16 reduction in customized kernel
+torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
 import argparse
 import yaml
 import logging
 
+from src.compat import patch_torch_float8_compat
+
+patch_torch_float8_compat()
+
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from src.patch import PatchLlama, PatchQwen
+from src.patch import PatchLlama, PatchQwen, PatchMixtral
 from src.auto_map import ModelMap
 from src.evaluator import WikiText, LM_eval
 from src.ptq import PTQ
@@ -18,13 +26,16 @@ from src.ptq import PTQ
 parser = argparse.ArgumentParser(description='HBQ')
 parser.add_argument('--config_dir', type=str, default='config/llama3-8b_wiki.yaml', help="Path to the configuration file (.yaml)")
 parser.add_argument('--quant_config', type=str, default='config/baseline.yaml', help="Path to the quantization configuration file (.yaml)")
+parser.add_argument('--save_dir', type=str, default=None, help="Override save.run_dir from the model configuration file")
 args = parser.parse_args()
 
 class CompressLLM():
-    def __init__(self, config_dir, quant_config_dir):
+    def __init__(self, config_dir, quant_config_dir, save_dir=None):
         with open(config_dir, 'r') as f:
             # load inference config
             self.config = yaml.full_load(f)
+        if save_dir is not None:
+            self.config.setdefault("save", {})["run_dir"] = save_dir
         with open(quant_config_dir, 'r') as f:
             # load quantization config
             self.quant_config = yaml.full_load(f)
@@ -35,12 +46,23 @@ class CompressLLM():
 
         model = self.create_model()
         self.tokenizer = self.prepare_tokenizer()
+
+        quantization = self.quant_config.get("quantization", {})
+        is_fp16_baseline = quantization.get("xqtype") == "none" and quantization.get("wqtype") == "none"
+        if is_fp16_baseline:
+            self.logger.info("FP16 baseline detected; skipping HBQ module patch/PTQ")
+            self.model = model
+            self.task = None
+            return
         
         # Patch model
-        if "llama".lower() in self.config["model"]["model_type"].lower():
+        model_type_lower = self.config["model"]["model_type"].lower()
+        if "llama" in model_type_lower:
             patcher = PatchLlama(model)
-        elif "qwen".lower() in self.config["model"]["model_type"].lower():
+        elif "qwen" in model_type_lower:
             patcher = PatchQwen(model)
+        elif "mixtral" in model_type_lower or "mistral" in model_type_lower:
+            patcher = PatchMixtral(model)
         else:
             raise ValueError(f"Unsupported model type: {self.config['model']['model_type']}")
         
@@ -102,6 +124,8 @@ class CompressLLM():
         return tokenizer
     
     def ptq(self):
+        if self.task is None:
+            return self.model
         faked_quantized_model = self.task.run()
         return faked_quantized_model
 
@@ -128,7 +152,7 @@ class CompressLLM():
         return results
 
 def starter():
-    executor = CompressLLM(args.config_dir, args.quant_config)
+    executor = CompressLLM(args.config_dir, args.quant_config, args.save_dir)
     executor.run()
 
 if __name__ == "__main__":

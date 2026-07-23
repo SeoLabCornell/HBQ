@@ -9,6 +9,7 @@ from typing import Optional, Tuple, Callable
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import eager_attention_forward, LlamaAttention, apply_rotary_pos_emb, repeat_kv
 from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2MLP, Qwen2Config
+from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralConfig
 from transformers.cache_utils import Cache
 from transformers.processing_utils import Unpack
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
@@ -409,6 +410,129 @@ class QQwen2Attention(Qwen2Attention):
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
 
+class QMixtralAttention(MixtralAttention):
+    def __init__(self, config: MixtralConfig, layer_idx: int):
+        super().__init__(config, layer_idx)
+        self.q_proj = _QBaseLinear(config.hidden_size, config.num_attention_heads * self.head_dim, bias=False)
+        self.k_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=False)
+        self.v_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=False)
+        self.o_proj = _QBaseLinear(config.num_attention_heads * self.head_dim, config.hidden_size, bias=False)
+
+        self.quant_attn_wgt = False
+        self.quant_post_rope_q = False
+        self.quant_k_cache = False
+        self.quant_v_cache = False
+        self.kv_quantizer = None
+        self.attn_wgt_quantizer = None
+
+    def manual_spda(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attention_mask: Optional[torch.Tensor],
+        dropout: float = 0.0,
+        scaling: Optional[float] = None,
+        is_causal: Optional[bool] = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, None]:
+        if hasattr(self, 'num_key_value_groups'):
+            key = repeat_kv(key, self.num_key_value_groups)
+            value = repeat_kv(value, self.num_key_value_groups)
+
+        causal_mask = attention_mask
+        if attention_mask is not None:
+            causal_mask = causal_mask[:, :, :, : key.shape[-2]]
+
+        query = query.contiguous()
+        key = key.contiguous()
+        value = value.contiguous()
+
+        _, _, L, D = query.shape
+        S = key.shape[-2]
+        if scaling is None:
+            scaling = 1.0 / math.sqrt(D)
+        if is_causal is None:
+            is_causal = (causal_mask is None) and (L > 1)
+
+        q = query.to(torch.float32)
+        k = key.to(torch.float32)
+        v = value.to(torch.float32)
+        attn_logits = torch.matmul(q, k.transpose(-2, -1)) * scaling
+
+        if causal_mask is not None:
+            if causal_mask.dtype == torch.bool:
+                attn_logits = attn_logits.masked_fill(~causal_mask, torch.finfo(attn_logits.dtype).min)
+            else:
+                attn_logits = attn_logits + causal_mask
+
+        if is_causal and causal_mask is None:
+            causal = torch.ones((L, S), dtype=torch.bool, device=attn_logits.device).tril()
+            attn_logits = attn_logits.masked_fill(~causal, torch.finfo(attn_logits.dtype).min)
+
+        attn_logits = torch.nan_to_num(
+            attn_logits,
+            nan=0.0,
+            posinf=torch.finfo(attn_logits.dtype).max,
+            neginf=torch.finfo(attn_logits.dtype).min,
+        )
+        attn_weights = F.softmax(attn_logits, dim=-1, dtype=torch.float32)
+        attn_weights = torch.nan_to_num(attn_weights, nan=0.0)
+        if dropout > 0.0 and self.training:
+            attn_weights = F.dropout(attn_weights, p=dropout)
+        if self.quant_attn_wgt:
+            attn_weights = _quantize_attention_weight(self.attn_wgt_quantizer, attn_weights)
+
+        attn_output = torch.matmul(attn_weights, v)
+        attn_output = torch.nan_to_num(attn_output, nan=0.0)
+        if query.dtype in (torch.float16, torch.bfloat16):
+            dtype_info = torch.finfo(query.dtype)
+            attn_output = attn_output.clamp(min=dtype_info.min, max=dtype_info.max)
+        attn_output = attn_output.to(query.dtype)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        return attn_output, None
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+        past_key_value: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        if self.quant_post_rope_q:
+            query_states = self.q_proj.aq.q(query_states)
+
+        if past_key_value is not None:
+            cache_kwargs = {'sin': sin, 'cos': cos, 'cache_position': cache_position}
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        attn_output, attn_weights = self.manual_spda(
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            sliding_window=getattr(self.config, 'sliding_window', None),
+            **kwargs,
+        )
+
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, attn_weights
+
+
 class QLlamaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -458,3 +582,30 @@ class QQwen2MLP(nn.Module):
         down_proj = self.down_proj(hadamard_output)
         return down_proj
 
+
+class QMixtralBlockSparseTop2MLP(nn.Module):
+    def __init__(self, config: Optional[MixtralConfig] = None, hidden_dim: int = None, ffn_dim: int = None, act_fn: Callable = None):
+        super().__init__()
+        if config is not None:
+            self.ffn_dim = config.intermediate_size
+            self.hidden_dim = config.hidden_size
+            self.act_fn = ACT2FN[config.hidden_act]
+        else:
+            self.ffn_dim = ffn_dim
+            self.hidden_dim = hidden_dim
+            self.act_fn = act_fn
+        self.w1 = _QBaseLinear(self.hidden_dim, self.ffn_dim, bias=False)
+        self.w2 = _QBaseLinear(self.ffn_dim, self.hidden_dim, bias=False)
+        self.w3 = _QBaseLinear(self.hidden_dim, self.ffn_dim, bias=False)
+        self.quantizer_after_act_fn = None
+
+    def forward(self, hidden_states):
+        if hidden_states.numel() == 0:
+            return hidden_states.new_empty(*hidden_states.shape[:-1], self.hidden_dim)
+        w1 = self.w1(hidden_states)
+        w3 = self.w3(hidden_states)
+        if self.quantizer_after_act_fn is not None:
+            hidden_states = self.quantizer_after_act_fn.q(self.act_fn(w1)) * w3
+        else:
+            hidden_states = self.act_fn(w1) * w3
+        return self.w2(hidden_states)

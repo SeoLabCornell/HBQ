@@ -511,8 +511,17 @@ class MXFPQuantizer(_QBase):
         return shared_scale
 
     def q(self, x:torch.Tensor):
-        # x_shape = x.shape
         xg, axes, orig_shape, padded_shape = self.reshape(x)
+
+        if self.per_tensor_scale: # scale xg down to match (element range * scale range), used in official NVFP4
+            ele_max = get_max_norm(ebit=self.ebit, mbit=self.mbit)
+            shared_scale_max = get_max_norm(ebit=self.sc_ebit, mbit=self.sc_mbit)
+            x_max = xg.abs().max().item()
+            if x_max == 0: # if all elements are 0, don't need tensor scale
+                tensor_scale = 1.0
+            else:
+                tensor_scale = x_max/(ele_max*shared_scale_max)
+            xg = xg / tensor_scale
 
         shared_scale = self.get_shared_scale(xg)
 
@@ -521,6 +530,9 @@ class MXFPQuantizer(_QBase):
         xg = self.lpfp_quant(xg)
 
         xg = xg.mul(shared_scale)
+
+        if self.per_tensor_scale:
+            xg = xg * tensor_scale
 
         # reshape the tensor
         xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)
@@ -579,17 +591,17 @@ class HBQQuantizer(MXFPQuantizer):
             l2_scale_all = l2_scale_pot[..., None]
         elif self.l2_scheme == "INT":
             l2_scale_all = l2_scale_int[..., None]
-        elif self.l2_scheme == "SIG-1":
+        elif self.l2_scheme == "SIG-1": # SIG_1
             l2_scale_all = l2_scale_sig_1[..., None]
-        elif self.l2_scheme == "FP-1":
+        elif self.l2_scheme == "FP-1": # SIG_2
             l2_scale_all = l2_scale_fp[..., None]
         elif self.l2_scheme == "FP1":
             l2_scale_all = l2_scale_fp1[..., None]
-        elif self.l2_scheme == "FP-10":
+        elif self.l2_scheme == "FP-10":  # SIG_3
             l2_scale_all = l2_scale_fp_10[..., None]
-        elif self.l2_scheme == "FP-100":
+        elif self.l2_scheme == "FP-100":  # SIG_4
             l2_scale_all = l2_scale_fp_100[..., None]
-        elif self.l2_scheme == "Mix":
+        elif self.l2_scheme == "Mix": # Mixture of SIG_2 and SIG_3
             l2_scale_all = torch.stack([l2_scale_fp, l2_scale_fp_10], dim=-1)
         else:
             assert False, f"Invalid L2 scheme: {self.l2_scheme}"

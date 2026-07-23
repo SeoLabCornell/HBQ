@@ -5,11 +5,12 @@ import torch
 import torch.nn as nn
 
 from typing import Tuple
-from src.module import QLlamaMLP, QQwen2MLP, QLlamaAttention, QQwen2Attention
+from src.module import QLlamaMLP, QQwen2MLP, QMixtralBlockSparseTop2MLP, QLlamaAttention, QQwen2Attention, QMixtralAttention
 
 
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaMLP
 from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2MLP
+from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralBlockSparseTop2MLP
 
 
 from typing import Union, Dict
@@ -116,3 +117,28 @@ class PatchQwen():
             setattr(parent, child_name, new)
 
         return self.model
+
+class PatchMixtral():
+    def __init__(self, model: nn.Module) -> None:
+        self.model = model
+
+    @torch.inference_mode()
+    def patch(self):
+        targets = []
+        for n, m in self.model.named_modules():
+            if isinstance(m, (MixtralAttention, MixtralBlockSparseTop2MLP)):
+                parent_name, name = get_parent_name(n)
+                parent = self.model.get_submodule(parent_name)
+                targets.append((parent, name, m))
+
+        for parent, child_name, old in targets:
+            with torch.device("meta"):
+                if isinstance(old, MixtralAttention):
+                    new = QMixtralAttention(old.config, old.layer_idx)
+                else:
+                    new = QMixtralBlockSparseTop2MLP(hidden_dim=old.hidden_dim, ffn_dim=old.ffn_dim, act_fn=old.act_fn)
+            new.load_state_dict(old.state_dict(), strict=False, assign=True)
+            setattr(parent, child_name, new)
+
+        return self.model
+
