@@ -23,8 +23,15 @@ pip install -e .
 
 ## Usage
 
-Each script runs the AWQ scale/clip search, then evaluates the quantized model
-on the tasks reported in the paper:
+To reproduce the whole Table 9 AWQ row in one go (all five base models plus a
+final summary table; set `PARALLEL=1` to run one model per GPU):
+
+```bash
+bash scripts/run_table9_awq.sh
+```
+
+Each per-model script runs the AWQ scale/clip search, then evaluates the
+quantized model on the tasks reported in the paper:
 
 ```bash
 bash scripts/llama2_7b_example.sh          # wikitext / winogrande / piqa
