@@ -1,11 +1,11 @@
 """Analytical performance / energy model for the accelerator comparison figures.
 
-Replaces the spreadsheet flow: every number used by script/plot_fig16.py
-(system energy breakdown) and script/plot_fig18.py (iso-area speedup) is
-computed here from the model architectures and the hardware parameters.
+Replaces the spreadsheet flow: every number used by plot_fig16.py (system
+energy breakdown) and plot_fig18.py (iso-area speedup) is computed here from
+the model architectures and the hardware parameters.
 
 Run directly to print all intermediate numbers:
-    python src/perf_model.py
+    python perf_model.py
 """
 
 # --------------------------------------------------------------------------- #

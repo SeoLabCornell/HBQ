@@ -6,4 +6,5 @@ blockquant_ext_src/build/
 *.pt
 *.png
 *.csv
+*.pdf
 .DS_Store

@@ -1,18 +1,15 @@
 """Figure 18: iso-area speedup (Linear + Attention) per model and scheme.
 
-All speedups are computed by src/perf_model.py from prefill MAC counts and
+All speedups are computed by perf_model.py from prefill MAC counts and
 per-scheme area/derate parameters; run this script and the figure is written
 to fig18.pdf.
 """
 
 import math
-import sys
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import perf_model as pm
 
 COLOR_LINEAR = "#4C78A8"

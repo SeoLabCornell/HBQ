@@ -37,12 +37,12 @@ Figure 11:
 
 Figure 16:
 - [v] Reproduce energy numbers + plotting: `python3 plot_fig16.py` (writes `fig16.pdf`)
-- All energy numbers are computed by `src/perf_model.py` from the model architectures and hardware parameters (PrimeTime pJ/MAC, DRAM/SRAM energy per access); run `python3 ../src/perf_model.py` to dump every intermediate number
+- All energy numbers are computed by `perf_model.py` from the model architectures and hardware parameters (PrimeTime pJ/MAC, DRAM/SRAM energy per access); run `python3 perf_model.py` to dump every intermediate number
 - Perplexity line uses the measured KV-cache-quantized PPL (same as Table 10)
 
 Figure 18:
 - [v] Reproduce speedup numbers + plotting: `python3 plot_fig18.py` (writes `fig18.pdf`)
-- Speedups are computed by `src/perf_model.py` from prefill MAC counts (1K/4K/16K) and per-scheme area (um^2/MAC, from synthesis)
+- Speedups are computed by `perf_model.py` from prefill MAC counts (1K/4K/16K) and per-scheme area (um^2/MAC, from synthesis)
 
 Table 2: 
 - [v] Reproduce PPL results: `python3 nvfp4_scaling_ppl.py`

@@ -1,16 +1,12 @@
 """Figure 16: system energy breakdown (DRAM / Compute / SRAM) + perplexity.
 
-All energy numbers are computed by src/perf_model.py; run this script and the
+All energy numbers are computed by perf_model.py; run this script and the
 figure is written to fig16.pdf.
 """
-
-import sys
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib import transforms
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import perf_model as pm
 
 plt.rcParams["font.family"] = "sans-serif"
