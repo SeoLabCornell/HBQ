@@ -1,7 +1,11 @@
 import math
 import torch
 import torch.nn as nn
-import awq_inference_engine  # with CUDA kernels
+
+try:
+    import awq_inference_engine  # CUDA kernels, only needed for --q_backend real
+except ImportError:
+    awq_inference_engine = None
 
 
 def make_divisible(c, divisor):
@@ -200,20 +204,43 @@ class WQLinear(nn.Module):
 
     @torch.no_grad()
     def forward(self, x):
+        if awq_inference_engine is None:
+            raise RuntimeError(
+                "awq_inference_engine is not installed; it is required for "
+                "--q_backend real. Build the kernels from the upstream repo "
+                "(https://github.com/mit-han-lab/llm-awq) or use --q_backend fake."
+            )
         # out_shape = x.shape[:-1] + (self.out_features,)
         # inputs = x.reshape(-1, x.shape[-1])
         inputs = x
-        if inputs.numel() / inputs.shape[-1] < 8:
+        num_rows = inputs.numel() // inputs.shape[-1]
+        if num_rows == 1:
+            # decode / single-token path: gemv is the fast kernel and supports
+            # a batch size of 1.
             out = awq_inference_engine.gemv_forward_cuda_new(
                 inputs,
                 self.qweight,
                 self.scales,
                 self.scaled_zeros,
-                inputs.numel() // inputs.shape[-1],
+                num_rows,
                 self.out_features,
                 self.in_features,
                 self.group_size,
             )
+        elif num_rows < 8:
+            # The gemv kernel only supports specific small batch sizes. Mixtral's
+            # MoE feeds each expert an arbitrary number of routed tokens (often
+            # 2..7), which can hit an unsupported size and raise
+            # "Unsupported batch size for gemv kernel". Pad up into the gemm
+            # regime and slice back -- rows are independent, so this is exact.
+            flat = inputs.reshape(-1, inputs.shape[-1])
+            padded = torch.cat(
+                [flat, flat.new_zeros(8 - num_rows, flat.shape[-1])], dim=0
+            )
+            out = awq_inference_engine.gemm_forward_cuda_new(
+                padded, self.qweight, self.scales, self.scaled_zeros
+            )
+            out = out[:num_rows].reshape(*inputs.shape[:-1], self.out_features)
         else:
             out = awq_inference_engine.gemm_forward_cuda_new(
                 inputs, self.qweight, self.scales, self.scaled_zeros

@@ -27,7 +27,11 @@ def get_named_linears(module):
 
 
 def get_blocks(model):
-    if model.__class__.__name__ in ("LlamaForCausalLM", "Qwen2ForCausalLM"):
+    if model.__class__.__name__ in (
+        "LlamaForCausalLM",
+        "Qwen2ForCausalLM",
+        "MixtralForCausalLM",
+    ):
         layers = model.model.layers
     elif model.__class__.__name__ == "InternVL3":
         layers = model.language_model.model.layers
@@ -58,6 +62,12 @@ def move_embed(model, device):
     if isinstance(model, (LlamaForCausalLM, Qwen2ForCausalLM)):
         model.model.embed_tokens = model.model.embed_tokens.to(device)
         model.model.rotary_emb = model.model.rotary_emb.to(device)
+    elif model.__class__.__name__ == "MixtralForCausalLM":
+        model.model.embed_tokens = model.model.embed_tokens.to(device)
+        # rotary_emb lives at the model level in newer transformers; older
+        # versions compute it inside each attention block, so guard it.
+        if getattr(model.model, "rotary_emb", None) is not None:
+            model.model.rotary_emb = model.model.rotary_emb.to(device)
     elif model.__class__.__name__ == "InternVL3":
         model.language_model.model.embed_tokens = (
             model.language_model.model.embed_tokens.to(device)
@@ -170,10 +180,30 @@ def run_awq(
         "clip": [],
     }
 
+    # Multi-GPU: park idle layers across all visible GPUs instead of CPU RAM,
+    # so large models (e.g. Mixtral-8x7B, Llama-3.1-70B) don't have to fit in
+    # host memory. Per-layer compute still happens on a single device
+    # (compute_device) because the AWQ scale/clip helpers assume one device;
+    # each layer is pulled there only while it is processed and sent back to its
+    # home GPU afterwards rather than offloaded to the CPU.
+    n_gpu = torch.cuda.device_count()
+    park_on_gpu = n_gpu > 1
+    compute_device = "cuda:0"
+    if park_on_gpu:
+        # The model is already sharded across GPUs at load time. Record each
+        # layer's home device so we can pull it to the compute device for
+        # processing and send it straight back afterwards. We deliberately do
+        # NOT redistribute layers here: moving them round-robin while the
+        # original placement is still resident transiently stacks layers onto a
+        # GPU and OOMs it.
+        home_devices = [next(layer.parameters()).device for layer in layers]
+        gc.collect()
+        torch.cuda.empty_cache()
+
     # solve layer by layer
     for i in tqdm.tqdm(range(len(layers)), desc="Running AWQ..."):
         layer = layers[i]
-        layer = layer.cuda()
+        layer = layer.to(compute_device)
         named_linears = get_named_linears(layer)
 
         # firstly, get input features of all linear layers
@@ -237,7 +267,12 @@ def run_awq(
                 clip_list, get_op_name(model, layer) + "."
             )
 
-        layer = layer.cpu()
+        if park_on_gpu:
+            # send the finished layer back to its home device, freeing the
+            # compute device (cuda:0) for the next layer
+            layers[i].to(home_devices[i])
+        else:
+            layer = layer.cpu()
         # Haotian: check activation replacement
         del input_feat
         gc.collect()

@@ -8,6 +8,11 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMS
 from transformers.activations import GELUActivation
 from transformers.models.qwen2.modeling_qwen2 import Qwen2RMSNorm, Qwen2DecoderLayer
 
+try:
+    from transformers.models.mixtral.modeling_mixtral import MixtralRMSNorm
+except ImportError:
+    MixtralRMSNorm = None
+
 from .qmodule import ScaledActivation
 from ..utils.module import get_op_by_name, get_op_name, set_op_by_name
 
@@ -172,7 +177,66 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
 
     scales_list = []  # return the searched scales
 
-    if isinstance(module, OPTDecoderLayer):
+    if "mixtral" in str(module.__class__).lower():
+        # the decoder layer is called with MoE-only kwargs (e.g.
+        # output_router_logits) that the attention module does not accept;
+        # strip them before inspecting self_attn.
+        attn_kwargs = {
+            k: v for k, v in module_kwargs.items() if k != "output_router_logits"
+        }
+        # attention input (same as Llama)
+        scales_list.append(
+            _auto_get_scale(
+                prev_op=module.input_layernorm,
+                layers=[
+                    module.self_attn.q_proj,
+                    module.self_attn.k_proj,
+                    module.self_attn.v_proj,
+                ],
+                inp=input_feat["self_attn.q_proj"],
+                module2inspect=module.self_attn,
+                kwargs=attn_kwargs,
+            )
+        )
+        # attn out
+        if module.self_attn.v_proj.weight.shape == module.self_attn.o_proj.weight.shape:
+            scales_list.append(
+                _auto_get_scale(
+                    prev_op=module.self_attn.v_proj,
+                    layers=[module.self_attn.o_proj],
+                    inp=input_feat["self_attn.o_proj"],
+                )
+            )
+        # MoE block: the post-attention norm feeds the router gate AND every
+        # expert's w1/w3. They all consume the same hidden state, so a single
+        # shared input scale is folded into the norm; the gate is included so
+        # its weights are compensated and routing stays exact (the gate is
+        # kept in fp16 at quantization time).
+        moe = module.block_sparse_moe
+        experts = moe.experts
+        scales_list.append(
+            _auto_get_scale(
+                prev_op=module.post_attention_layernorm,
+                layers=[moe.gate]
+                + [fc for expert in experts for fc in (expert.w1, expert.w3)],
+                # MixtralSparseMoeBlock.forward expects a (batch, seq, hidden)
+                # tensor; the captured gate input is flattened to 2D, so add a
+                # batch dim back before inspecting the block output.
+                inp=input_feat["block_sparse_moe.gate"].unsqueeze(0),
+                module2inspect=moe,
+            )
+        )
+        # each expert's w3 -> w2 (analogous to up_proj -> down_proj)
+        for idx, expert in enumerate(experts):
+            scales_list.append(
+                _auto_get_scale(
+                    prev_op=expert.w3,
+                    layers=[expert.w2],
+                    inp=input_feat[f"block_sparse_moe.experts.{idx}.w2"],
+                )
+            )
+
+    elif isinstance(module, OPTDecoderLayer):
         # attention input
         scales_list.append(
             _auto_get_scale(
@@ -451,15 +515,68 @@ def apply_scale(module, scales_list, input_feat_dict=None):
         prev_op = get_op_by_name(module, prev_op_name)
         layers = [get_op_by_name(module, name) for name in layer_names]
 
-        prev_op.cuda()
+        # Remember each op's home device. With a sharded (multi-GPU) model the
+        # ops already live on a GPU; unconditionally sending them to .cpu()
+        # afterwards drags the whole model into host RAM, one layer at a time,
+        # and the process gets OOM-killed during apply_awq. Only move to GPU for
+        # the math if the op is on CPU, then restore it to where it came from.
+        prev_home = next(prev_op.parameters()).device
+        layer_homes = [next(layer.parameters()).device for layer in layers]
+
+        if prev_home.type != "cuda":
+            prev_op.cuda()
         for layer in layers:
-            layer.cuda()
-        scales.cuda()
+            if next(layer.parameters()).device.type != "cuda":
+                layer.cuda()
+        scales = scales.cuda()
+
+        # Cached scales can contain non-finite (NaN/inf) or ~0 values -- from a
+        # corrupted/mismatched pre-computed cache or a degenerate search. The
+        # scale helpers below divide weights by these, turning the weights into
+        # NaN/inf and tripping their sanity asserts (the failure looked like a
+        # silent NaN deep inside apply_awq). A non-finite or vanishing scale
+        # means "effectively no scaling" for that channel, so clamp it back to a
+        # safe value and report how many we touched -- a handful is harmless; a
+        # large count means the cache is bad and should be regenerated.
+        bad_mask = ~torch.isfinite(scales) | (scales == 0)
+        n_bad = int(bad_mask.sum())
+        if n_bad:
+            print(
+                f"[apply_scale] sanitized {n_bad}/{scales.numel()} non-finite/zero "
+                f"scale value(s) in {prev_op_name} -> {layer_names}"
+            )
+            scales = torch.nan_to_num(scales, nan=1.0, posinf=1.0, neginf=1.0)
+            scales = scales.clamp(min=1e-4)
+
+        norm_types = (nn.LayerNorm, LlamaRMSNorm, Qwen2RMSNorm)
+        if MixtralRMSNorm is not None:
+            norm_types = norm_types + (MixtralRMSNorm,)
 
         if isinstance(prev_op, nn.Linear):
             assert len(layers) == 1
+            # fc->fc scaling folds prev_op's output channels into layers[0]'s
+            # input channels, so it is only valid when
+            # prev_op.out_features == layers[0].in_features. That holds for
+            # mlp.up_proj -> mlp.down_proj, but NOT for v_proj -> o_proj on GQA
+            # models (e.g. Llama-3.1-70B), where v_proj.out_features (1024) !=
+            # o_proj.in_features (8192). The search side guards against emitting
+            # that entry; a pre-computed/older cache may still contain it, and
+            # applying it corrupts the weights into NaNs. Skip the mismatched
+            # entry instead of crashing.
+            if prev_op.out_features != layers[0].in_features:
+                print(
+                    f"[apply_scale] Skipping incompatible fc->fc scale "
+                    f"{prev_op_name} -> {layer_names} "
+                    f"(out_features={prev_op.out_features} vs "
+                    f"in_features={layers[0].in_features}); this is expected for "
+                    f"GQA models."
+                )
+                prev_op.to(prev_home)
+                for layer, home in zip(layers, layer_homes):
+                    layer.to(home)
+                continue
             scale_fc_fc(prev_op, layers[0], scales)
-        elif isinstance(prev_op, (nn.LayerNorm, LlamaRMSNorm, Qwen2RMSNorm)):
+        elif isinstance(prev_op, norm_types):
             scale_ln_fcs(prev_op, layers, scales)
         elif isinstance(prev_op, (nn.GELU, BloomGelu, GELUActivation, nn.SiLU)):
             new_module = ScaledActivation(prev_op, scales)
@@ -474,7 +591,6 @@ def apply_scale(module, scales_list, input_feat_dict=None):
                 inp = input_feat_dict[layer_name]
                 inp.div_(scales.view(1, -1).to(inp.device).to(inp.dtype))
 
-        prev_op.cpu()
-        for layer in layers:
-            layer.cpu()
-        scales.cpu()
+        prev_op.to(prev_home)
+        for layer, home in zip(layers, layer_homes):
+            layer.to(home)

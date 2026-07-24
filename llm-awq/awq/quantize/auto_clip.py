@@ -74,6 +74,10 @@ def auto_clip_block(module, w_bit, q_config, input_feat):
         # due to qk bmm, it is hard to clip precisely
         if any([_ in name for _ in ["q_", "k_", "query", "key", "Wqkv"]]):
             continue
+        # the MoE router (e.g. Mixtral's block_sparse_moe.gate) is kept in fp16
+        # and has too few output channels for the clip batching; skip it.
+        if name.endswith("gate"):
+            continue
         named_linears[name].cuda()
         max_val = auto_clip_layer(
             named_linears[name].weight, input_feat[name], n_bit=w_bit, q_config=q_config
@@ -89,10 +93,28 @@ def apply_clip(module, clip_list):
 
     for name, max_val in clip_list:
         layer = get_op_by_name(module, name)
-        layer.cuda()
+        # Restore to the layer's home device (it may be sharded onto a specific
+        # GPU). Sending it to .cpu() afterwards would pull the model into host
+        # RAM layer by layer and get the process OOM-killed during apply_awq.
+        home = next(layer.parameters()).device
+        if home.type != "cuda":
+            layer.cuda()
         max_val = max_val.to(layer.weight.device).to(layer.weight.dtype)
+        # A non-finite or zero cached clip threshold would either NaN-out the
+        # weights or clamp a whole channel to zero. Treat such entries as "do not
+        # clip" (threshold -> +inf) so a corrupted/mismatched cache can't silently
+        # destroy weights; quantization then fails loudly later only on real NaNs.
+        bad_mask = ~torch.isfinite(max_val) | (max_val == 0)
+        n_bad = int(bad_mask.sum())
+        if n_bad:
+            print(
+                f"[apply_clip] sanitized {n_bad}/{max_val.numel()} non-finite/zero "
+                f"clip threshold(s) in {name}"
+            )
+            max_val = max_val.clone()
+            max_val[bad_mask] = float("inf")
         org_shape = layer.weight.shape
         layer.weight.data = layer.weight.data.reshape(*max_val.shape[:2], -1)
         layer.weight.data = torch.clamp(layer.weight.data, -max_val, max_val)
         layer.weight.data = layer.weight.data.reshape(org_shape)
-        layer.cpu()
+        layer.to(home)

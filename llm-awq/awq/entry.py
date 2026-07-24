@@ -1,4 +1,4 @@
-from lm_eval import evaluator, tasks
+import lm_eval
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 import torch
 import argparse
@@ -17,10 +17,10 @@ from awq.quantize.quantizer import (
     pseudo_quantize_model_weight,
     real_quantize_model_weight,
 )
-from awq.utils.lm_eval_adaptor import LMEvalAdaptor
 from awq.utils.utils import simple_dispatch_model
 from datasets import load_dataset
-from torch import nn
+from lm_eval.models.huggingface import HFLM
+from lm_eval.utils import make_table
 import tqdm
 
 parser = argparse.ArgumentParser()
@@ -66,42 +66,7 @@ parser.add_argument(
 parser.add_argument(
     "--load_awq", type=str, default=None, help="load the awq search results"
 )
-parser.add_argument(
-    "--vila-15",
-    action="store_true",
-    help="quantizing vila 1.5",
-)
-parser.add_argument(
-    "--vila-20",
-    action="store_true",
-    help="quantizing or smoothing vila 2.0 (NVILA)",
-)
-parser.add_argument(
-    "--smooth_scale",
-    action="store_true",
-    help="generate the act scale of visiontower",
-)
-parser.add_argument(
-    "--media_path",
-    type=str,
-    nargs="+",
-    help="The input video to get act scale for visiontower",
-)
-parser.add_argument(
-    "--act_scale_path",
-    type=str,
-    default=None,
-    help="Path to save act scale",
-)
 args = parser.parse_args()
-assert (
-    args.act_scale_path is not None and len(args.media_path) > 0
-) or not args.smooth_scale
-vila_10_quant_mode = (
-    ("llava" in args.model_path.lower() or "vila" in args.model_path.lower())
-    and not args.vila_15
-    and not args.vila_20
-)
 
 max_memory = [v.split(":") for v in (args.max_memory or [])]
 max_memory = {(int(k) if k.isdigit() else k): v for k, v in max_memory}
@@ -126,29 +91,17 @@ def build_model_and_enc(model_path, dtype):
     print(f"* Building model {model_path}")
 
     # all hf model
-    if vila_10_quant_mode:
-        from llava.model.builder import load_pretrained_model
-        from llava.mm_utils import get_model_name_from_path
-
-        enc, model, image_processor, context_len = load_pretrained_model(
-            model_path=model_path,
-            model_base=None,
-            model_name=get_model_name_from_path(model_path),
-            device="cpu",
-            **{"use_cache": False},
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+    # Note (Haotian): To avoid OOM after huggingface transformers 4.36.2
+    config.use_cache = False
+    if "mpt" in config.__class__.__name__.lower():
+        enc = AutoTokenizer.from_pretrained(
+            config.tokenizer_name, trust_remote_code=True
         )
     else:
-        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
-        # Note (Haotian): To avoid OOM after huggingface transformers 4.36.2
-        config.use_cache = False
-        if "mpt" in config.__class__.__name__.lower():
-            enc = AutoTokenizer.from_pretrained(
-                config.tokenizer_name, trust_remote_code=True
-            )
-        else:
-            enc = AutoTokenizer.from_pretrained(
-                model_path, use_fast=False, trust_remote_code=True
-            )
+        enc = AutoTokenizer.from_pretrained(
+            model_path, use_fast=False, trust_remote_code=True
+        )
 
     if args.load_quant:  # directly load quantized weights
         print("Loading pre-computed quantized weights...")
@@ -169,6 +122,7 @@ def build_model_and_enc(model_path, dtype):
             no_split_module_classes=[
                 "OPTDecoderLayer",
                 "LlamaDecoderLayer",
+                "MixtralDecoderLayer",
                 "BloomBlock",
                 "MPTBlock",
                 "DecoderLayer",
@@ -188,12 +142,66 @@ def build_model_and_enc(model_path, dtype):
         model.eval()
     else:  # fp16 to quantized
         args.run_awq &= not args.load_awq  # if load_awq, no need to run awq
-        # Init model on CPU:
         kwargs = {"torch_dtype": torch_dtype, "low_cpu_mem_usage": True}
-        if not vila_10_quant_mode:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_path, config=config, trust_remote_code=True, **kwargs
-            )
+        # With multiple GPUs, stream the fp16 weights straight onto them instead
+        # of materializing the whole model in CPU RAM first. A 70B fp16 model is
+        # ~140GB and OOM-kills the host *during loading* (before AWQ even runs).
+        # We reserve some headroom per GPU for AWQ's per-layer activations, and
+        # drop accelerate's offload hooks afterwards so run_awq / quantization
+        # can manage device placement manually.
+        n_gpu = torch.cuda.device_count()
+        if n_gpu > 1:
+            # Shard the model across GPUs at load time. For the AWQ search
+            # (run_awq), keep device 0 as light as possible (balanced_low_0) so
+            # it has room to serve as the AWQ compute device; otherwise use all
+            # GPUs evenly — a 70B fp16 model (~141GB) doesn't fit if one GPU is
+            # held back. Reserve a little headroom on each GPU for
+            # fragmentation / activations.
+            reserve = 4 * (1024**3)
+            kwargs["device_map"] = "balanced_low_0" if args.run_awq else "balanced"
+            kwargs["max_memory"] = {
+                i: max(
+                    torch.cuda.get_device_properties(i).total_memory - reserve, 0
+                )
+                for i in range(n_gpu)
+            }
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, config=config, trust_remote_code=True, **kwargs
+        )
+        device_map_used = getattr(model, "hf_device_map", None)
+        if device_map_used is not None:
+            # If accelerate couldn't fit the fp16 model on the visible GPUs
+            # it silently spills the remainder to CPU and then to disk
+            # ("meta" device). The downstream AWQ-apply / real-quantize
+            # passes then touch those meta tensors, thrash host RAM, and get
+            # SIGKILL'd by the OOM killer with NO Python traceback. Detect
+            # that here and fail loudly with an actionable message instead.
+            offloaded = {
+                name: dev
+                for name, dev in device_map_used.items()
+                if dev in ("cpu", "disk") or (isinstance(dev, str) and dev == "meta")
+            }
+            if offloaded:
+                visible = [
+                    torch.cuda.get_device_properties(i).name
+                    for i in range(n_gpu)
+                ]
+                raise RuntimeError(
+                    "The fp16 model did not fit entirely on the visible "
+                    f"GPUs, so {len(offloaded)} module(s) were offloaded to "
+                    f"{sorted(set(offloaded.values()))}. Quantizing offloaded "
+                    "(meta/cpu/disk) weights does not work and will be "
+                    "OOM-killed silently.\n"
+                    f"Visible GPUs ({n_gpu}): {visible}\n"
+                    "Fixes: (1) make sure all GPUs are actually free "
+                    "(`nvidia-smi`) and not held by a previous killed run; "
+                    "(2) check CUDA_VISIBLE_DEVICES exposes all of them; "
+                    "(3) lower the per-GPU `reserve` above if you have only a "
+                    "little overflow."
+                )
+            from accelerate.hooks import remove_hook_from_module
+
+            remove_hook_from_module(model, recurse=True)
 
         model.eval()
 
@@ -259,6 +267,7 @@ def build_model_and_enc(model_path, dtype):
             no_split_module_classes=[
                 "OPTDecoderLayer",
                 "LlamaDecoderLayer",
+                "MixtralDecoderLayer",
                 "BloomBlock",
                 "MPTBlock",
                 "DecoderLayer",
@@ -270,26 +279,43 @@ def build_model_and_enc(model_path, dtype):
     return model, enc
 
 
+def run_lm_eval(model, tokenizer, task_names, limit=None, batch_size=1, num_fewshot=0):
+    lm_object = HFLM(
+        pretrained=model,
+        tokenizer=tokenizer,
+        add_bos_token=False,
+        batch_size=batch_size,
+    )
+
+    eval_kwargs = {
+        "model": lm_object,
+        "tasks": task_names,
+        "log_samples": False,
+        "limit": limit,
+    }
+
+    if "humaneval" in task_names:
+        os.environ["HF_ALLOW_CODE_EVAL"] = "1"
+        eval_kwargs["confirm_run_unsafe_code"] = True
+    elif "mmlu" in task_names:
+        eval_kwargs["num_fewshot"] = 5
+    elif "gsm8k_cot_llama" in task_names:
+        eval_kwargs["fewshot_as_multiturn"] = True
+        eval_kwargs["apply_chat_template"] = True
+        eval_kwargs["gen_kwargs"] = "max_length=2048"
+    elif num_fewshot > 0:
+        eval_kwargs["num_fewshot"] = num_fewshot
+
+    with torch.no_grad():
+        results = lm_eval.simple_evaluate(**eval_kwargs)
+
+    print(make_table(results))
+    return results
+
+
 def main():
     if args.output_path is not None and os.path.exists(args.output_path):
-        # print(f"Results {args.output_path} already generated. Exit.")
         print(f"Results {args.output_path} already generated. Overwrite.")
-        # exit()
-
-    # a hack here to auto set model group
-    if args.smooth_scale and args.vila_20:
-        if os.path.exists(args.act_scale_path):
-            print(f"Found existing Smooth Scales {args.act_scale_path}, skip.")
-        else:
-            from awq.quantize import get_smooth_scale
-
-            act_scale = get_smooth_scale(args.model_path, args.media_path)
-            os.makedirs(os.path.dirname(args.act_scale_path), exist_ok=True)
-            torch.save(act_scale, args.act_scale_path)
-            print("Save act scales at " + str(args.act_scale_path))
-            args.model_path = args.model_path + "/llm"
-        if args.dump_awq is None and args.dump_quant is None:
-            exit()
 
     if args.dump_awq and os.path.exists(args.dump_awq):
         print(f"Found existing AWQ results {args.dump_awq}, exit.")
@@ -316,9 +342,9 @@ def main():
                 shift_labels = testenc[
                     :, (i * model.seqlen) : ((i + 1) * model.seqlen)
                 ][:, 1:]
-                loss_fct = nn.CrossEntropyLoss()
-                loss = loss_fct(
-                    shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+                loss = torch.nn.functional.cross_entropy(
+                    shift_logits.view(-1, shift_logits.size(-1)),
+                    shift_labels.view(-1),
                 )
                 neg_log_likelihood = loss.float() * model.seqlen
                 nlls.append(neg_log_likelihood)
@@ -333,24 +359,26 @@ def main():
                     json.dump(results, f, indent=2)
         else:
             task_names = args.tasks.split(",")
-
-            lm_eval_model = LMEvalAdaptor(args.model_path, model, enc, args.batch_size)
-            results = evaluator.simple_evaluate(
-                model=lm_eval_model,
-                tasks=task_names,
+            results = run_lm_eval(
+                model=model,
+                tokenizer=enc,
+                task_names=task_names,
+                limit=None,
                 batch_size=args.batch_size,
-                no_cache=True,
                 num_fewshot=args.num_fewshot,
             )
-
-            print(evaluator.make_table(results))
 
         if args.output_path is not None:
             os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
             # otherwise cannot save
-            results["config"]["model"] = args.model_path
+            if isinstance(results, dict) and "config" in results:
+                results["config"]["model"] = args.model_path
             with open(args.output_path, "w") as f:
-                json.dump(results, f, indent=2)
+                # lm_eval's result dict carries non-JSON-native values (e.g.
+                # torch.dtype in the model config). Without a fallback encoder
+                # the dump raises *after* the evaluation has finished and the
+                # whole run's results are lost.
+                json.dump(results, f, indent=2, default=str)
 
 
 if __name__ == "__main__":

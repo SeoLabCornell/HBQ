@@ -7,9 +7,6 @@ from ..utils.module import set_op_by_name
 
 from transformers.models.bloom.modeling_bloom import BloomBlock
 
-from awq.quantize.mx import MXFPQuantizer
-from awq.quantize.l2 import MXFPL2Quantizer
-
 EMBEDDING_KEYWORDS = ["embed"]
 LM_HEAD_KEYWORDS = ["lm_head", "embed_out", "output"]
 
@@ -64,85 +61,46 @@ def scale_activations(module):
 def pseudo_quantize_tensor(
     w, n_bit=8, zero_point=True, q_group_size=-1, inplace=False, get_scale_zp=False
 ):
-    # org_w_shape = w.shape
-    # if q_group_size > 0:
-    #     assert org_w_shape[-1] % q_group_size == 0
-    #     w = w.reshape(-1, q_group_size)
-    # assert w.dim() == 2
-    # if zero_point:
-    #     max_val = w.amax(dim=1, keepdim=True)
-    #     min_val = w.amin(dim=1, keepdim=True)
-    #     max_int = 2**n_bit - 1
-    #     min_int = 0
-    #     scales = (max_val - min_val).clamp(min=1e-5) / max_int
-    #     zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
-    # else:  # we actually never used this
-    #     assert min_val is None
-    #     max_val = w.abs().amax(dim=1, keepdim=True)
-    #     max_val = max_val.clamp(min=1e-5)
-    #     max_int = 2 ** (n_bit - 1) - 1
-    #     min_int = -(2 ** (n_bit - 1))
-    #     scales = max_val / max_int
-    #     zeros = 0
+    org_w_shape = w.shape
+    if q_group_size > 0:
+        assert org_w_shape[-1] % q_group_size == 0
+        w = w.reshape(-1, q_group_size)
+    assert w.dim() == 2
+    if zero_point:
+        max_val = w.amax(dim=1, keepdim=True)
+        min_val = w.amin(dim=1, keepdim=True)
+        max_int = 2**n_bit - 1
+        min_int = 0
+        scales = (max_val - min_val).clamp(min=1e-5) / max_int
+        zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
+    else:  # we actually never used this
+        assert min_val is None
+        max_val = w.abs().amax(dim=1, keepdim=True)
+        max_val = max_val.clamp(min=1e-5)
+        max_int = 2 ** (n_bit - 1) - 1
+        min_int = -(2 ** (n_bit - 1))
+        scales = max_val / max_int
+        zeros = 0
 
-    # assert torch.isnan(scales).sum() == 0
-    # assert torch.isnan(w).sum() == 0
+    assert torch.isnan(scales).sum() == 0
+    assert torch.isnan(w).sum() == 0
 
-    # if inplace:
-    #     (
-    #         (w.div_(scales).round_().add_(zeros)).clamp_(min_int, max_int).sub_(zeros)
-    #     ).mul_(scales)
-    # else:
-    #     w = (
-    #         torch.clamp(torch.round(w / scales) + zeros, min_int, max_int) - zeros
-    #     ) * scales
-    # assert torch.isnan(w).sum() == 0
+    if inplace:
+        (
+            (w.div_(scales).round_().add_(zeros)).clamp_(min_int, max_int).sub_(zeros)
+        ).mul_(scales)
+    else:
+        w = (
+            torch.clamp(torch.round(w / scales) + zeros, min_int, max_int) - zeros
+        ) * scales
+    assert torch.isnan(w).sum() == 0
 
-    # w = w.reshape(org_w_shape)
+    w = w.reshape(org_w_shape)
 
-    # if get_scale_zp:
-    #     return w, scales.view(w.shape[0], -1), zeros.view(w.shape[0], -1)
-    # else:
-    #     return w
-
-    mxfp4_quantizer = MXFPQuantizer(ebit=2, mbit=1, sc_ebit=8, sc_mbit=0, block_size=32, use_round=False, use_ceil=False)
-    nvfp4_quantizer = MXFPQuantizer(ebit=2, mbit=1, sc_ebit=5, sc_mbit=3, block_size=16, use_round=False, use_ceil=False)
-    hbq_e_quantizer = MXFPL2Quantizer(
-                ebit=2,
-                mbit=1,
-                train_flag=True,
-                unsigned=False,
-                sc_ebit=5,
-                sc_mbit=3,
-                block_size=128,
-                per_tensor_scale=False,
-                scale_allow_subnormal=False,
-                use_round=False,
-                use_ceil=False,
-                l2_block_size=32,
-                l2_sc_bit=2,
-                l2_scheme="Mix",
-                keep_l2_scale=False
-            )
-    hbq_a_quantizer = MXFPL2Quantizer(
-                ebit=2,
-                mbit=1,
-                train_flag=True,
-                unsigned=False,
-                sc_ebit=5,
-                sc_mbit=3,
-                block_size=64,
-                per_tensor_scale=False,
-                scale_allow_subnormal=False,
-                use_round=False,
-                use_ceil=False,
-                l2_block_size=16,
-                l2_sc_bit=2,
-                l2_scheme="Mix",
-                keep_l2_scale=False
-            )
-    w_quantized = hbq_a_quantizer.q(w)
-    return w_quantized
+    if get_scale_zp:
+        return w, scales.view(w.shape[0], -1), zeros.view(w.shape[0], -1)
+    else:
+        return w
 
 
 @torch.no_grad()
@@ -157,6 +115,9 @@ def pseudo_quantize_model_weight(
     for i in tqdm(range(len(layers)), desc="pseudo weight quantization..."):
         named_linears = get_named_linears(layers[i])
         for n, m in named_linears.items():
+            # keep MoE routers (e.g. Mixtral's block_sparse_moe.gate) in fp16
+            if n.endswith("gate"):
+                continue
             m.cuda()
             m.weight.data = pseudo_quantize_tensor(
                 m.weight.data, n_bit=w_bit, **q_config
@@ -181,6 +142,9 @@ def real_quantize_model_weight(model, w_bit, q_config, init_only=False):
         scale_activations(layer)
 
         for name, module in named_linears.items():
+            # keep MoE routers (e.g. Mixtral's block_sparse_moe.gate) in fp16
+            if name.endswith("gate"):
+                continue
             if init_only:
                 q_linear = WQLinear.from_linear(
                     module, w_bit, q_config["q_group_size"], True
