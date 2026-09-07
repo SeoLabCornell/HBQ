@@ -1,4 +1,4 @@
-name: hbq-llm2
+name: hbq
 channels:
   - pytorch
   - nvidia
