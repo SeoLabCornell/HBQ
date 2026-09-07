@@ -1,0 +1,23 @@
+tag:
+  - math_word_problems
+task: hendrycks_math500
+dataset_path: HuggingFaceH4/MATH-500
+output_type: generate_until
+test_split: test
+process_docs: !function utils.process_docs
+doc_to_text: "Problem: {{problem}}\nPlease reason step by step, and put your final answer within \\boxed{}."
+doc_to_target: "{{answer}}"
+process_results: !function utils.process_results
+generation_kwargs:
+  until:
+    - "Problem:"
+  do_sample: false
+  temperature: 0
+metric_list:
+  - metric: exact_match
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 1.0
+dataset_kwargs:
+  trust_remote_code: true

@@ -15,19 +15,21 @@ PPL_PATTERN = re.compile(rf"Wikitext2 PPL:\s*({NUMBER_PATTERN})")
 MODELS = [
     ("llama2-7b", "meta-llama/Llama-2-7b-hf"),
     ("llama3-8b", "meta-llama/Meta-Llama-3-8B"),
+    ("llama3.1-70b", "meta-llama/Llama-3.1-70B"),
     ("llama3.2-3b", "meta-llama/Llama-3.2-3B"),
     ("qwen2.5-3b", "Qwen/Qwen2.5-3B"),
     ("qwen2.5-7b", "Qwen/Qwen2.5-7B"),
-    ("llama3.1-70b", "meta-llama/Llama-3.1-70B"),
     ("mixtral-8x7b", "mistralai/Mixtral-8x7B-v0.1"),
 ]
 
 TASKS = ["wikitext", "piqa", "winogrande"]
 QUANT_CONFIGS = {
-    "hbq_a": ROOT / "config/hbq_a.yaml",
-    "hbq_e": ROOT / "config/hbq_e.yaml",
     "mxfp4": ROOT / "config/mxfp4.yaml",
     "nvfp4": ROOT / "config/nvfp4.yaml",
+    "hbq_e": ROOT / "config/hbq_e.yaml",
+    "hbq_a": ROOT / "config/hbq_a.yaml",
+    "vsq_w4a4": ROOT / "config/vsq_w4a4.yaml",
+    "mxex": ROOT / "config/mxex4.yaml",
 }
 
 
@@ -46,18 +48,25 @@ def parse_result(log_file, task):
 
 
 def print_and_save_results(results):
-    headers = ["Model"]
-    for task in TASKS:
-        for quant_name in QUANT_CONFIGS:
-            headers.append(f"{task}_{quant_name}")
+    headers = ["Quantization"]
+    for model_name, _ in MODELS:
+        headers.extend([f"{model_name} PPL", f"{model_name} 0-shot"])
 
     rows = []
-    for model_name, _ in MODELS:
-        row = [model_name]
-        for task in TASKS:
-            for quant_name in QUANT_CONFIGS:
-                value = results[(model_name, task, quant_name)]
-                row.append(f"{value:.4f}" if value is not None else "N/A")
+    for quant_name in QUANT_CONFIGS:
+        row = [quant_name]
+        for model_name, _ in MODELS:
+            ppl = results[(model_name, "wikitext", quant_name)]
+            piqa = results[(model_name, "piqa", quant_name)]
+            winogrande = results[(model_name, "winogrande", quant_name)]
+            zero_shot = (
+                (piqa + winogrande) / 2
+                if piqa is not None and winogrande is not None else None
+            )
+            row.extend([
+                f"{ppl:.4f}" if ppl is not None else "N/A",
+                f"{zero_shot:.4f}" if zero_shot is not None else "N/A",
+            ])
         rows.append(row)
 
     tsv_file = OUT_DIR / "results.tsv"
@@ -67,7 +76,7 @@ def print_and_save_results(results):
 
     widths = [max(len(row[i]) for row in [headers, *rows]) for i in range(len(headers))]
     separator = "+-" + "-+-".join("-" * width for width in widths) + "-+"
-    print("\nEvaluation results (Wikitext PPL; PIQA acc_norm; Winogrande acc)")
+    print("\nEvaluation results (PPL; 0-shot = mean of PIQA acc_norm and Winogrande acc)")
     print(separator)
     print("| " + " | ".join(value.ljust(widths[i]) for i, value in enumerate(headers)) + " |")
     print(separator)

@@ -48,9 +48,14 @@ class CompressLLM():
         self.tokenizer = self.prepare_tokenizer()
 
         quantization = self.quant_config.get("quantization", {})
-        is_fp16_baseline = quantization.get("xqtype") == "none" and quantization.get("wqtype") == "none"
-        if is_fp16_baseline:
-            self.logger.info("FP16 baseline detected; skipping HBQ module patch/PTQ")
+        accumulation_type = self.quant_config.get("accumulation", {}).get("type", "fp32")
+        uses_default_kernels = (
+            quantization.get("xqtype") == "none"
+            and quantization.get("wqtype") == "none"
+            and accumulation_type == "fp32"
+        )
+        if uses_default_kernels:
+            self.logger.info("No quantization or custom accumulation kernel detected; skipping HBQ module patch/PTQ")
             self.model = model
             self.task = None
             return

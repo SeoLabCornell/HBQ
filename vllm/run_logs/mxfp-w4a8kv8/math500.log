@@ -1,0 +1,17 @@
+WARNING 07-23 18:01:09 [config.py:70] Support for Transformers v4 is deprecated. The Transformers v4 codepath will become unmaintained in vLLM v0.22.0 and will be removed in vLLM v0.24.0. Please upgrade to Transformers v5: pip install --upgrade transformers
+Traceback (most recent call last):
+  File "<HOME>/project/HBQ-llm/vllm/main.py", line 388, in <module>
+    main()
+  File "<HOME>/project/HBQ-llm/vllm/main.py", line 382, in main
+    results.append(run_lm_eval_task(task, config, args.limit, logger))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<HOME>/project/HBQ-llm/vllm/main.py", line 275, in run_lm_eval_task
+    lm_object = build_lm_eval_vllm(config)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<HOME>/project/HBQ-llm/vllm/main.py", line 202, in build_lm_eval_vllm
+    return LMEvalVLLM(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "<HOME>/.conda/envs/hbq-vllm2/lib/python3.11/site-packages/lm_eval/models/vllm_causallms.py", line 107, in __init__
+    self.model = LLM(**self.model_args)
+                 ^^^
+NameError: name 'LLM' is not defined. Did you mean: 'VLLM'?

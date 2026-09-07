@@ -2,7 +2,8 @@ from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 import os
 
-os.environ.setdefault('TORCH_CUDA_ARCH_LIST', '8.6;8.9;9.0;10.0;10.3;12.0')
+# os.environ.setdefault('TORCH_CUDA_ARCH_LIST', '8.6;8.9;9.0;10.0;10.3;12.0')
+os.environ.setdefault('TORCH_CUDA_ARCH_LIST', '8.6;8.9;9.0')
 
 # Set parallel compile jobs
 os.environ.setdefault('MAX_JOBS', '8')

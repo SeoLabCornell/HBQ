@@ -30,7 +30,6 @@ source dont_use.syn.tcl
 
 # Read verilog files
 set VERILOG_DIR "."
-set MEMORY_DIR "<HOME>/lib/memory"
 
 set RTL_SRC_FILES [list \
 "$VERILOG_DIR/MAC.sv" \

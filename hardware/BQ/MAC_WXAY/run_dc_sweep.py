@@ -4,6 +4,7 @@ This script reproduce area per MAC numbers shown in Figure 3.
 Run synthesis across different block sizes among PoT and FP8 scaling schemes.
 '''
 
+import contextlib
 import re
 import shutil
 import subprocess
@@ -28,6 +29,14 @@ ACTIVATION_BLOCKSIZE_CONFIGS = [
     ("PoT", "syn_PoT.tcl", [32]),
     ("FP8", "syn_FP8.tcl", [4, 8, 16, 32, 64, 128]),
 ]
+
+# Clock period (ns) used for synthesis. Every configuration runs at the default
+# unless it is listed in CLK_PERIOD_OVERRIDES, keyed by (suffix, Y, B).
+DEFAULT_CLK_PERIOD = "2"
+CLK_PERIOD_OVERRIDES = {
+    ("FP8", 8, 128): "2.5",  # W4A8B128 is synthesized at 400 MHz
+}
+CLK_PERIOD_PATTERN = re.compile(r"^(set\s+clk_period\s+)(\S+)\s*$", re.MULTILINE)
 
 PARAM_PATTERNS = {
     "X": re.compile(r"^(\s*parameter\s+integer\s+X\s*=\s*)(\d+)(\s*;.*)$", re.MULTILINE),
@@ -64,13 +73,35 @@ def prepare_run_dirs():
             shutil.rmtree(folder_path)
 
 
-def run_dc_shell(tcl_name):
+def clk_period_for(suffix, y, b):
+    return CLK_PERIOD_OVERRIDES.get((suffix, y, b), DEFAULT_CLK_PERIOD)
+
+
+@contextlib.contextmanager
+def patched_clk_period(tcl_path, clk_period):
+    """Temporarily set `set clk_period` in the TCL script, restoring it afterwards."""
+    original = tcl_path.read_text()
+    patched, count = CLK_PERIOD_PATTERN.subn(
+        lambda m: f"{m.group(1)}{clk_period}", original, count=1
+    )
+    if count != 1:
+        raise RuntimeError(f"Could not set clk_period in {tcl_path}")
+    try:
+        if patched != original:
+            tcl_path.write_text(patched)
+        yield
+    finally:
+        tcl_path.write_text(original)
+
+
+def run_dc_shell(tcl_name, clk_period=DEFAULT_CLK_PERIOD):
     tcl_path = SCRIPT_DIR / tcl_name
     if not tcl_path.exists():
         raise FileNotFoundError(f"Could not find TCL script: {tcl_path}")
 
-    print(f"Running: dc_shell -f {tcl_name}")
-    subprocess.run(["dc_shell", "-f", tcl_name], cwd=SCRIPT_DIR, check=True)
+    print(f"Running: dc_shell -f {tcl_name} (clk_period = {clk_period} ns)")
+    with patched_clk_period(tcl_path, clk_period):
+        subprocess.run(["dc_shell", "-f", tcl_name], cwd=SCRIPT_DIR, check=True)
 
 
 def output_dir_candidates(x, y, b, suffix):
@@ -262,7 +293,7 @@ def generate_activation_blocksize_tsv(results, output_file="activation_blocksize
             continue
         if result["suffix"] == "PoT" and result["b"] != 32:
             continue
-        if result["suffix"] == "FP8" and result["b"] not in [16, 32, 64, 128]:
+        if result["suffix"] == "FP8" and result["b"] not in [4, 8, 16, 32, 64, 128]:
             continue
         key = (result["suffix"], result["y"], result["b"])
         results_by_scale_and_y_and_b[key] = result["area_per_mac"]
@@ -306,7 +337,7 @@ def run_scaling_factor_sweep():
 
                 update_params(x=4, y=y, b=b)
                 prepare_run_dirs()
-                run_dc_shell(tcl_name)
+                run_dc_shell(tcl_name, clk_period_for(suffix, y, b))
                 archive_outputs(4, y, b, suffix)
     except subprocess.CalledProcessError as exc:
         print(f"dc_shell failed with exit code {exc.returncode}")
@@ -338,7 +369,7 @@ def run_activation_blocksize_sweep():
 
                     update_params(x=4, y=y, b=b)
                     prepare_run_dirs()
-                    run_dc_shell(tcl_name)
+                    run_dc_shell(tcl_name, clk_period_for(suffix, y, b))
                     archive_outputs(4, y, b, suffix)
     except subprocess.CalledProcessError as exc:
         print(f"dc_shell failed with exit code {exc.returncode}")

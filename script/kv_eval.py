@@ -13,7 +13,7 @@ PPL_PATTERN = re.compile(r"Wikitext2 PPL:\s*([0-9]+(?:\.[0-9]+)?)")
 
 MODEL_CONFIGS = {
     "llama2-7b": ROOT / "config/llama2-7b_wiki.yaml",
-    "llama3-8b": ROOT / "config/llama3-8b_wiki.yaml",
+    "llama3.1-8b": ROOT / "config/llama3.1-8b_wiki.yaml",
     "llama3.2-3b": ROOT / "config/llama3.2-3b_wiki.yaml",
 }
 

@@ -1,0 +1,28 @@
+name: hbq-vllm
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - ipython
+  - ipykernel
+  - pip:
+      - vllm==0.22.1
+      - torch==2.11.0
+      - torchvision==0.26.0
+      - transformers>=4.56.0
+      - accelerate==1.4.0
+      - datasets==2.21.0
+      - evaluate==0.4.3
+      - lm-eval==0.4.8
+      - ray==2.55.1
+      - safetensors
+      - tqdm
+      - pyyaml
+      - sentencepiece
+      - huggingface-hub==0.36.0
+      - regex

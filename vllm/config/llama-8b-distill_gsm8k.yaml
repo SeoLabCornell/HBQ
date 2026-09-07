@@ -1,0 +1,25 @@
+model:
+  model_type: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+
+eval:
+  tasks: [gsm8k_cot_llama]
+  batch_size: 1
+  limit: null
+  log_samples: false
+  add_bos_token: false
+  apply_chat_template: true
+  fewshot_as_multiturn: true
+  gen_kwargs: null
+  max_gen_toks: 2048
+
+save:
+  run_dir: save/DeepSeek-R1-Distill-Llama-8B-vllm/
+  logger: gsm8k.log
+
+vllm:
+  dtype: float16
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.75
+  enforce_eager: true
+  max_model_len: 2048
+  trust_remote_code: true

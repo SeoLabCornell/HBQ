@@ -538,6 +538,162 @@ class MXFPQuantizer(_QBase):
         xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)
         return xg
 
+class MXExQuantizer(_QBase):
+    def __init__(
+        self,
+        block_size:int=16,
+        l2_block_size: int=2,
+        sc_bit: int=8, # first level scaling
+        l2_sc_bit: int=1, # second level scaling
+        mbit: int=3, # mantissa bit width, equivalent to INT
+    ):
+        """
+        MicroExponent quantization
+        Parameters:
+            - block_size: quantization granularity
+            - l2_block_size: micro block size
+            - sc_bit: first level scaling bit width
+            - l2_sc_bit: second level scaling bit width
+            - mbit: element mantissa bit width, equivalent to INT
+            - per_tensor_scale: per tensor scale (used in official NVFP4)
+            - scale_allow_subnormal: allow using subnormal in scaling factor
+        """
+        super().__init__()
+        self.sc_bit = sc_bit
+        self.l2_sc_bit = l2_sc_bit
+        self.mbit = mbit
+        self.block_size = block_size
+        self.l2_block_size = l2_block_size
+
+    def reshape(self, x:torch.Tensor):
+        # reshape to blocks along the last dimension
+        x, axes, orig_shape, padded_shape = _reshape_to_blocks(
+            x, [-1], block_size=self.block_size
+        )
+        return x, axes, orig_shape, padded_shape
+
+    def get_shared_scale(self, x:torch.Tensor) -> torch.Tensor:
+        if x.dtype == torch.float32:
+            min_normal = FP32_MIN_NORMAL
+        elif x.dtype == torch.float16:
+            min_normal = FP16_MIN_NORMAL
+        else:
+            raise NotImplementedError(f"Non-supported data type: {x.dtype}")
+
+        max_val, _ = torch.max(torch.abs(x), dim=-1, keepdim=True) # abs max
+        ele_emax = self.mbit-2 # maximum exponent in the element format
+        shared_exp = torch.floor(torch.log2(
+            max_val + min_normal * (max_val == 0).type(max_val.dtype)
+        ))
+        emax = 2**(self.sc_bit-1) - 1
+        emin = -emax
+        shared_exp = (shared_exp-ele_emax-self.l2_sc_bit).clip(max=emax, min=emin)
+        shared_scale = 2**shared_exp
+
+        return shared_scale
+
+    def q(self, x:torch.Tensor):
+        # x_shape = x.shape
+        xg, axes, orig_shape, padded_shape = self.reshape(x)
+
+        shared_scale = self.get_shared_scale(xg)
+
+        xg = xg / shared_scale
+
+        # l2 scale = 2
+        xg_l2_blk = xg.reshape(*xg.shape[:-1], -1, self.l2_block_size) # (tok, # of blk, # of l2 blk, l2 blk size)
+        xg_l2_shift = xg_l2_blk / 2
+        xg_l2_shift_quant = torch.sign(xg_l2_shift) *  torch.floor(torch.abs(xg_l2_shift) + 0.5)
+        xg_l2_shift_quant = xg_l2_shift_quant.clip(min = -(2**(self.mbit-1)), max = 2**(self.mbit-1)-1)
+        xg_l2_shift_quant = xg_l2_shift_quant * 2
+        shift_error = (xg_l2_shift_quant - xg_l2_blk).abs().pow(2).sum(dim=-1) # (tok, # of blk, # of l2 blk)
+
+        # l2 scale = 1
+        xg_l2_unshift = xg_l2_blk
+        xg_l2_unshift = torch.sign(xg_l2_unshift) *  torch.floor(torch.abs(xg_l2_unshift) + 0.5)
+        xg_l2_unshift = xg_l2_unshift.clip(min = -(2**(self.mbit-1)), max = 2**(self.mbit-1)-1)
+        unshift_error = (xg_l2_unshift - xg_l2_blk).abs().pow(2).sum(dim=-1) # (tok, # of blk, # of l2 blk)
+
+        shift_is_better = (shift_error < unshift_error).unsqueeze(-1) # (tok, # of blk, # of l2 blk, 1)
+        xg_l2_blk = torch.where(shift_is_better, xg_l2_shift_quant, xg_l2_unshift)
+        xg = xg_l2_blk.reshape(*xg.shape)
+
+        xg = xg.mul(shared_scale)
+
+        # reshape the tensor
+        xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)
+        if xg.isnan().sum() > 0 or xg.isinf().sum()>0:
+            inf_indices = torch.nonzero(xg.isinf(), as_tuple = False)
+            nan_indices = torch.nonzero(xg.isnan(), as_tuple = False)
+            import pdb; pdb.set_trace()
+        return xg
+
+class VSQQuantizer(_QBase):
+    def __init__(
+        self,
+        nbit: int,
+        block_size:int=16,
+        sc_mbit: int=4,
+    ):
+        """
+        VSQ quantization
+        Parameters:
+        - nbit: element bit width
+        """
+        super().__init__()
+        self.nbit = nbit
+        self.block_size = block_size
+        self.sc_mbit = sc_mbit
+
+    def reshape(self, x:torch.Tensor):
+        # reshape to blocks along the last dimension
+        x, axes, orig_shape, padded_shape = _reshape_to_blocks(
+            x, [-1], block_size=self.block_size
+        )
+        return x, axes, orig_shape, padded_shape
+
+    def get_shared_scale(self, x:torch.Tensor) -> torch.Tensor:
+        if x.dtype == torch.float32:
+            min_normal = FP32_MIN_NORMAL
+        elif x.dtype == torch.float16:
+            min_normal = FP16_MIN_NORMAL
+        else:
+            raise NotImplementedError(f"Non-supported data type: {x.dtype}")
+
+        max_val, _ = torch.max(torch.abs(x), dim=-1, keepdim=True) # abs max
+        ele_emax =  self.nbit-2 # maximum exponent in the element format
+        shared_scale = max_val / get_max_norm(ebit=0, mbit=self.nbit) # per vector scale in FP
+        shared_scale = fp_quant(shared_scale, self.sc_ebit, self.sc_mbit, allow_subnormal=self.scale_allow_subnormal)
+        scale_min = get_min_subnorm(self.sc_ebit, self.sc_mbit) if self.scale_allow_subnormal else get_min_norm(self.sc_ebit, self.sc_mbit)
+        shared_scale = shared_scale.clip(min = scale_min) # avoid very small case
+        return shared_scale
+
+    def q(self, x:torch.Tensor):
+        xg, axes, orig_shape, padded_shape = self.reshape(x)
+
+        # caculate l1/l2 scale
+        max_val, _ = torch.max(torch.abs(xg), dim=-1, keepdim=True) # abs max
+        shared_scale = max_val / get_max_norm(ebit=0, mbit=self.nbit) # per vector scale in FP
+        max_scale = shared_scale.max(dim=-2, keepdim=True).values # (tok, # of blk, 1)
+        l1_scale = max_scale/get_max_norm(ebit=0, mbit=self.sc_mbit, unsigned=True) # per-channel scale (L1)
+        safe_l1_scale = torch.where(l1_scale == 0, torch.ones_like(l1_scale), l1_scale)
+        l2_scale = shared_scale/safe_l1_scale
+        l2_scale = torch.sign(l2_scale) * torch.floor(torch.abs(l2_scale) + 0.5)
+        l2_scale = l2_scale.clip(min = 0, max = 2**(self.sc_mbit)-1)
+
+        # quantization
+        safe_shared_scale = torch.where(shared_scale == 0, torch.ones_like(shared_scale), shared_scale)
+        xg = xg/safe_shared_scale
+        xg = torch.sign(xg) *  torch.floor(torch.abs(xg) + 0.5)
+        xg = xg.clip(min = -(2**(self.nbit-1)), max = 2**(self.nbit-1)-1)
+
+        # dequantization
+        xg = xg*l1_scale*l2_scale
+
+        # reshape the tensor
+        xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)
+        return xg
+
 class HBQQuantizer(MXFPQuantizer):
     """
     HBQ quantizer, 2-stage quantization

@@ -10,7 +10,13 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
 from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer
 
-from src.quantizer import MXFPQuantizer, MXINTQuantizer, HBQQuantizer
+from src.quantizer import (
+    MXFPQuantizer,
+    MXINTQuantizer,
+    HBQQuantizer,
+    MXExQuantizer,
+    VSQQuantizer,
+)
 from src.module import QLlamaAttention, QQwen2Attention, QMixtralAttention, QLlamaMLP, QQwen2MLP, QMixtralBlockSparseTop2MLP, _QBaseLinear, _QBase
 from src.ops import FP16AccumMatMul
 
@@ -49,6 +55,10 @@ class PTQ:
         self.w_block_size = quant_config.get("block_quant", {}).get("wgt_block_size", 32)
         self.w_per_tensor_scale = quant_config.get("block_quant", {}).get("wgt_per_tensor_scale", False)
         self.scale_allow_subnormal = quant_config.get("block_quant", {}).get("scale_allow_subnormal", True)
+
+        # MicroExponent quantization
+        self.a_sc_bit = quant_config.get("block_quant", {}).get("act_sc_bit", 8)
+        self.w_sc_bit = quant_config.get("block_quant", {}).get("wgt_sc_bit", 8)
 
         # MX format
         self.qk_mx_round = quant_config.get("block_quant", {}).get("qk_mx_round", False)
@@ -115,6 +125,20 @@ class PTQ:
                 block_size=self.w_block_size,
                 scale_allow_subnormal=self.scale_allow_subnormal
                 )
+        elif self.wqtype == "mxex":
+            return MXExQuantizer(
+                sc_bit=self.w_sc_bit,
+                l2_sc_bit=self.wgt_l2_sc_bit,
+                mbit=self.w_mbit,
+                block_size=self.w_block_size,
+                l2_block_size=self.wgt_l2_block_size,
+                )
+        elif self.wqtype == "vsq":
+            return VSQQuantizer(
+                nbit=self.w_mbit,
+                block_size=self.w_block_size,
+                sc_mbit=self.w_sc_mbit,
+                )
         elif self.wqtype == "hbq":
             return HBQQuantizer(
                 ebit=self.w_ebit,
@@ -155,6 +179,20 @@ class PTQ:
                 sc_mbit=self.a_sc_mbit,
                 block_size=self.a_block_size,
                 scale_allow_subnormal=self.scale_allow_subnormal
+                )
+        elif self.xqtype == "mxex":
+            return MXExQuantizer(
+                sc_bit=self.a_sc_bit,
+                l2_sc_bit=self.act_l2_sc_bit,
+                mbit=self.a_mbit,
+                block_size=self.a_block_size,
+                l2_block_size=self.act_l2_block_size,
+                )
+        elif self.xqtype == "vsq":
+            return VSQQuantizer(
+                nbit=self.a_mbit,
+                block_size=self.a_block_size,
+                sc_mbit=self.a_sc_mbit,
                 )
         elif self.xqtype == "hbq":
             return HBQQuantizer(

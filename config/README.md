@@ -30,7 +30,7 @@ quantization: # Model quantization configs
   # quantize attention weight
   quant_attn_wgt: True
 
-micro_scaling: # Block quantization configs
+block_quant: # Block quantization configs
   # act BQ configs
   act_ebit: 2
   act_mbit: 1

@@ -28,6 +28,9 @@ Basic BQ PE module that performs BQ MAC with **FP format with E2MX**. FP with 2-
 
 Paper result reproduction: This module covers Figure 3, Figure 4(b), Figure 5, Figure 6, and Table 9 (area for MXFP/NVFP).
 
+Note: W4A8B128 setting exhibits the longest critical path in the multiplication and adder-tree stage, resulting in unusually high area and breaking the expected decreasing Area/MAC trend as the block size increases from 16 to 128. Our main observation is that larger block sizes improve efficiency by amortizing the dequantization and accumulation overhead. Since the critical-path issue can potentially be addressed through proper pipelining and is orthogonal to this observation, we use a slightly lower synthesis frequency of 400 MHz for W4A8B128 to avoid obscuring the underlying trend. W4A8B128 achieves an Area/MAC of approximately 107/94 at frequency 500/400MHz.
+
+
 #### 1.2 BQ/MAC_EM
 Basic BQ PE module using FP format that allows user to tune different exponent and mantissa combination. Tunable knobs (variable names in params.vh shown in parenthesis):
 1. Activation precision(integer int Y)
@@ -57,6 +60,11 @@ You can tune *SUB_B* in params.vh to reproduce HBQ-E (SUB_B=32) and HBQ-A (SUB_B
 
 Paper result reproduction: This module covers Figure 10 and Table 9.
 
+### 3. HBQ_accelerator
+- group_quantizer: NVFP4 quantizer
+- hbq_e_quantizer: HBQ quantizer
+- accelerator: our entire 4096-MAC accelerator design
+
 ---
 
 ## Paper Result Reproduction Guideline
@@ -64,7 +72,8 @@ We use TSMC 28nm PDK with tt 0.9V 25C corner.
 To run all synthesis result used in the paper, please setup proper path to your PDK in all .tcl under BQ/ and HBQ/ and run:
 
 ``` bash
-cd hardware/BQ/MAC_WXAY && python3 run_dc_sweep.py # BQ with different block size/act bit
+cd hardware/BQ/MAC_WXAY && python3 run_dc_sweep.py # BQ synthesis with different block size/act bit
+cd hardware/BQ/MAC_WXAY && python3 run_pt_sweep.py # BQ power analysis with primetime with different block size/act bit
 cd hardware/BQ/MAC_EM && python3 run_dc_sweep.py # different FP format PE 
 cd hardware/BQ/MAC_int && python3 run_dc_sweep.py # INT format
 cd hardware/HBQ && python3 run_dc_sweep.py # HBQ with different uB

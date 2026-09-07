@@ -1,4 +1,4 @@
-name: hbq
+name: hbq-llm2
 channels:
   - pytorch
   - nvidia
@@ -12,6 +12,7 @@ dependencies:
   - scipy
   - matplotlib
   - ipython
+  - protobuf
   - ipykernel
   - jupyterlab
   - pip:
