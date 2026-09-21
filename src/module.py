@@ -49,10 +49,20 @@ class _QBaseLinear(nn.Linear):
         else:
             y = self.ops(xq, wq, self.bias)
 
-        if y.isnan().sum() > 0 or y.isinf().sum()>0:
-            inf_indices = torch.nonzero(y.isinf(), as_tuple = False)
-            nan_indices = torch.nonzero(y.isnan(), as_tuple = False)
-            import pdb; pdb.set_trace()
+        if not torch.isfinite(y).all():
+            ops_name = type(self.ops).__name__ if self.ops is not None else "F.linear"
+            raise RuntimeError(
+                f"Non-finite output from {type(self).__name__}"
+                f"({self.in_features} -> {self.out_features}): "
+                f"{int(y.isnan().sum())} NaN and {int(y.isinf().sum())} Inf "
+                f"out of {y.numel()} elements.\n"
+                f"  activation quantizer: {type(self.aq).__name__}\n"
+                f"  weight quantizer:     {type(self.wq).__name__}\n"
+                f"  matmul:               {ops_name}\n"
+                "This usually means the quantization config cannot represent this layer's "
+                "dynamic range -- check the element/scale exponent bits and the block size "
+                "in the quantization yaml."
+            )
         out = self.yq(y)
         return out
 

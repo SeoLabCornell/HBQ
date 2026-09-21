@@ -622,10 +622,17 @@ class MXExQuantizer(_QBase):
 
         # reshape the tensor
         xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)
-        if xg.isnan().sum() > 0 or xg.isinf().sum()>0:
-            inf_indices = torch.nonzero(xg.isinf(), as_tuple = False)
-            nan_indices = torch.nonzero(xg.isnan(), as_tuple = False)
-            import pdb; pdb.set_trace()
+        if not torch.isfinite(xg).all():
+            raise RuntimeError(
+                f"Non-finite output from {type(self).__name__}: "
+                f"{int(xg.isnan().sum())} NaN and {int(xg.isinf().sum())} Inf "
+                f"out of {xg.numel()} elements, quantizing a tensor of shape "
+                f"{tuple(orig_shape)}.\n"
+                f"  block_size={self.block_size}, l2_block_size={self.l2_block_size}, "
+                f"mbit={self.mbit}, sc_bit={self.sc_bit}, l2_sc_bit={self.l2_sc_bit}\n"
+                "This usually means the shared scale overflows the chosen scale format -- "
+                "check sc_bit against this tensor's dynamic range."
+            )
         return xg
 
 class VSQQuantizer(_QBase):
