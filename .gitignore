@@ -17,3 +17,13 @@ hardware/**/*.ddc
 hardware/**/*.sdc
 hardware/**/*.saif
 hardware/**/*.vcd
+
+# EDA tool cruft
+Synopsys_stack_trace_*.txt
+session.inter.vpd.tcl
+*.vpd
+
+TODO.md
+# Figures referenced by the READMEs (the blanket *.png rule above ignores them)
+!docs/*.png
+!hardware/PE_baseline.png

@@ -24,7 +24,6 @@ Choose one model task config:
 
 Choose one KV-quantized format config:
 
-- `config/mxfp_w4a8kv4.yaml` — MXFP W4A8, 4-bit KV
 - `config/mxfp_w4a8kv8.yaml` — MXFP W4A8, 8-bit KV
 - `config/nvfp_w4a8kv4.yaml` — NVFP W4A8, 4-bit KV
 - `config/hbq_a_new_kv.yaml` — HBQ-A, 4-bit KV
