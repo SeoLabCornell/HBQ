@@ -23,9 +23,9 @@ reg [`SCALE_DATAWIDTH-1:0] lp_scale_golden [0:`CASES-1][0:0];
 integer case_idx;
 initial begin
     for (case_idx = 0; case_idx < `CASES; case_idx = case_idx + 1) begin
-        $readmemb($sformatf("<HOME>/project/nvfp/nv_quantizer/testcase/case%0d/fp.txt", case_idx+1), fp_data[case_idx]);
-        $readmemb($sformatf("<HOME>/project/nvfp/nv_quantizer/testcase/case%0d/lp.txt", case_idx+1), lp_data_golden[case_idx]);
-        $readmemb($sformatf("<HOME>/project/nvfp/nv_quantizer/testcase/case%0d/scale.txt", case_idx+1), lp_scale_golden[case_idx]);
+        $readmemb($sformatf("./testcase/case%0d/fp.txt", case_idx+1), fp_data[case_idx]);
+        $readmemb($sformatf("./testcase/case%0d/lp.txt", case_idx+1), lp_data_golden[case_idx]);
+        $readmemb($sformatf("./testcase/case%0d/scale.txt", case_idx+1), lp_scale_golden[case_idx]);
     end
 end
 

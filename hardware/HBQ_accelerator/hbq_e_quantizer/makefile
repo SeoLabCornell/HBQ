@@ -4,16 +4,14 @@ CLOCK_PERIOD        = 2.0  # in the unit of ns
 CLOCK_PORT          = clk
 RESET_PORT          = rst
 SIM_TIMESCALE       = 1ns/1ps
-TOP_DIR 			= <HOME>/project/nvfp/hbq_e_quantizer
+TOP_DIR 			= .
 HEADERS             = $(TOP_DIR)/top.sv # It's recommended to  put all the macro/interface/parameter definition in header file
 MEMORY_HEADERS      = $(wildcard)
 TESTBENCH           = $(TOP_DIR)/tb.sv
 # TESTBENCH     = $(wildcard tb/verilog/tb_top.sv tb/verilog/chip_top.sv )
 SYN_FILE            = $(TOP_DIR)/syn/output/*.v*
 IO_MODEL            = $(wildcard tb/verilog/SP018V3EBCD*.v)
-#NETLIST                = <HOME>/hls/catapult/retnet/syn_script/pacific_example/output/MXDY_CORE.2.5.28nm.syn.v
 NETLIST             = $(TOP_DIR)/syn/output/FP2GS.2.28nm.syn.v
-# POST_NETLIST        = $(wildcard <HOME>/hls/catapult/retnet/datapath/apr/output/Datapath_rtl.2.apr.v)
 SDC_FILE            = ./syn/data/$(TOP_DESIGN).sdc
 SIM_FILE            = $(TESTBENCH)
 # SIM_FILE          = $(wildcard rtl/*.sv) 
@@ -37,7 +35,8 @@ VCS_POST = vcs -V -sverilog -full64 -debug_access+all +lint=TFIPC-L -kdb -lca -c
             +neg_tchk \
             +mindelays 
 # -P ${NOVAS_HOME}/share/PLI/VCS/LINUX64/novas.tab ${NOVAS_HOME}/share/PLI/VCS/LINUX64/pli.a
-LIB = <PDK_PATH>/tcbn28hpcplusbwp30p140.v
+# TODO: set the path to your standard cell library (Verilog simulation model) here
+LIB =
 # Simulation
 .PHONY: all simv verdi
 all: simv

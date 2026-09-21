@@ -64,11 +64,9 @@ CONFIGS = dc.ACTIVATION_BLOCKSIZE_CONFIGS
 # power.
 CHILD_BLOCKS = ["mac_vec", "scaling", "fp16_accum"]
 
-DEFAULT_STD_CELL_VERILOG = (
-    "<PDK_PATH>"
-    "/digital/Front_End/verilog/tcbn28hpcplusbwp30p140_110a"
-    "/tcbn28hpcplusbwp30p140.v"
-)
+# TODO: set STD_CELL_VERILOG to the tcbn28hpcplusbwp30p140.v of your PDK,
+# or put the path here.
+DEFAULT_STD_CELL_VERILOG = ""
 
 
 def config_name(y, b, suffix):

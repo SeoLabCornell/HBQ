@@ -10,8 +10,8 @@ set auto_write_syn false
 
 # Load common variables, artisan standard cells
 # source -verbose "./script/common.lp.syn.tcl"
+# TODO: set your search path here
 set search_path [list "." \
-                     "<PDK_PATH>" \
                      ]
 
 # set library
@@ -32,7 +32,8 @@ source dont_use.syn.tcl
 
 # Read verilog files
 set VERILOG_DIR "."
-set MEMORY_DIR "<HOME>/lib/memory"
+# TODO: set the path to your memory macro library here
+set MEMORY_DIR ""
 
 set RTL_SRC_FILES [list \
 "$VERILOG_DIR/top.sv" \

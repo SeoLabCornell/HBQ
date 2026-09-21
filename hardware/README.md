@@ -67,9 +67,36 @@ Paper result reproduction: This module covers Figure 10 and Table 9.
 
 ---
 
+## PDK Setup
+
+No PDK is distributed with this repository. We use a TSMC 28nm PDK (tt 0.9V 25C corner for
+area/timing, ssg 0.81V 125C for power); the library names are kept in the scripts, but every
+path to them has been removed and must be filled in for your own installation. Each site is
+marked with a `TODO` comment:
+
+| Where | What to set |
+|---|---|
+| `BQ/*/syn_*.tcl`, `HBQ/syn.tcl`, `HBQ_accelerator/*/syn/syn.tcl` | `search_path` (directory holding the `.db` files) and `TARGET_LIBS` |
+| `HBQ_accelerator/*/syn/syn.tcl` | `MEMORY_DIR`, if your design pulls in memory macros |
+| `HBQ_accelerator/*/makefile`, `HBQ_accelerator/*/syn/makefile` | `LIB` — the standard-cell Verilog simulation model (`tcbn28hpcplusbwp30p140.v` or equivalent) |
+| `HBQ_accelerator/hbq_e_quantizer/syn/power_script.tcl` | `search_path` (PDK `.db` directory, Synopsys `libraries/syn`, and the directory holding the synthesized netlist) |
+
+`BQ/MAC_WXAY` reads its paths from the environment instead, so nothing needs editing there:
+
+```bash
+export STD_CELL_VERILOG=/path/to/tcbn28hpcplusbwp30p140.v   # VCS gate-level sim
+export PT_PDK_DIR=/path/to/pdk/db                           # PrimeTime .db directory
+export PT_LIB_DB=tcbn28hpcplusbwp30p140ssg0p81v125c.db      # optional, this is the default
+```
+
+Synthesized netlists are deliberately not committed (see the `hardware/**/syn/output/` rules in
+`.gitignore`) — regenerate them locally with the sweeps below.
+
+---
+
 ## Paper Result Reproduction Guideline
 We use TSMC 28nm PDK with tt 0.9V 25C corner.
-To run all synthesis result used in the paper, please setup proper path to your PDK in all .tcl under BQ/ and HBQ/ and run:
+To run all synthesis result used in the paper, set up your PDK paths as described above and run:
 
 ``` bash
 cd hardware/BQ/MAC_WXAY && python3 run_dc_sweep.py # BQ synthesis with different block size/act bit

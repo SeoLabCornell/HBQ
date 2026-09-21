@@ -5,43 +5,34 @@
 
 set clock_period 2
 
+# TODO: set your search path here (PDK .db directory, Synopsys syn libraries,
+# and the directory holding the synthesized netlist)
 set search_path [list "." \
-    "<PDK_PATH>" \
-    "<SYNOPSYS_PATH>/libraries/syn" \
-    "<HOME>/project/PROJECT_NAME/syn/output" ]
+    ]
 
 # set library
 set link_path [list "*" \
-    "<PDK_PATH>/tcbn28hpcplusbwp30p140ssg0p81v125c.db"]
+    "tcbn28hpcplusbwp30p140ssg0p81v125c.db"]
 
 read_db [list   tcbn28hpcplusbwp30p140ssg0p81v125c.db ]
 
 # set library
 set TARGET_LIBS [list "*" \
-    "<PDK_PATH>/tcbn28hpcplusbwp30p140ssg0p81v125c.db" ]
+    "tcbn28hpcplusbwp30p140ssg0p81v125c.db" ]
 
 set_app_var target_library [concat $TARGET_LIBS]
 set_app_var link_library [concat "*" $TARGET_LIBS]
 set svr_enable_vpp true
-set verilog_files [list "<HOME>/project/PROJECT_NAME/syn/output/pe.$clock_period.28nm.syn.v" 
+set verilog_files [list "./output/pe.$clock_period.28nm.syn.v" 
 					]
 read_verilog $verilog_files
-# read_ddc <HOME>/project/PROJECT_NAME/syn/output/pe.ddc
+# read_ddc ./output/pe.ddc
 set top_level "pe"
 current_design $top_level
 link_design
-read_sdc <HOME>/project/PROJECT_NAME/syn/output/pe.${clock_period}.syn.28nm.sdc
+read_sdc ./output/pe.${clock_period}.syn.28nm.sdc
 
 # Set top level name
-
-#read_ddc <HOME>/MY_PROJECT/syn_script/pacific_example/output/RP_SIMD.ddc
-#read_sdc <HOME>/MY_PROJECT/syn_script/pacific_example/output/RP_SIMD.2.5.syn.28nm.sdc
-
-#read_ddc <HOME>/proj/basic_MAC/syn_8bit/output/top_MAC.2150M.ddc
-# read_ddc <HOME>/proj/basic_MAC/syn_8bit/output/top_MAC.${clock_period}M.ddc
-#read_sdc <HOME>/proj/basic_MAC/syn_8bit/output/top_MAC.2150M.syn.28nm.sdc
-
-
 
 
 ##################################################################
@@ -70,11 +61,9 @@ set power_enable_analysis true
 #read_vcd
 
 #read_saif rtl.saif -rtl_direct -strip_path tb/top_inst 
-#read_saif  <HOME>/MY_PROJECT/RP_SIMD/URP_SIMD.saif  -strip_path TB_RP_SIMD_CTRL/URP_SIMD
-# read_saif  <HOME>/project/PROJECT_NAME/syn/tb.saif -strip_path tb/dut
-read_vcd  <HOME>/project/PROJECT_NAME/syn/tb.vcd -time {20 50} -strip_path tb/dut
+# read_saif  ./tb.saif -strip_path tb/dut
+read_vcd  ./tb.vcd -time {20 50} -strip_path tb/dut
 
-#read_saif -input <HOME>/MY_PROJECT/MXDY_training/RP_SIMD.saif -instance TB_PreprocessMX/URP_SIMD
 
 ##################################################################
 #    Update_timing and check_timing Section                      #
