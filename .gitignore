@@ -8,3 +8,12 @@ blockquant_ext_src/build/
 *.csv
 *.pdf
 .DS_Store
+# Synthesis outputs: gate-level netlists contain foundry standard cells, never commit
+hardware/**/syn/output/
+hardware/**/syn/work/
+hardware/**/syn/data/
+hardware/**/*.syn.v
+hardware/**/*.ddc
+hardware/**/*.sdc
+hardware/**/*.saif
+hardware/**/*.vcd
