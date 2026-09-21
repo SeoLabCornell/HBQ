@@ -1,0 +1,67 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper below."
+title: "HBQ: Hierarchical Scaling Block Quantization"
+abstract: >-
+  Reference implementation of HBQ, a hierarchical scaling block quantization scheme for accurate
+  and hardware-efficient LLM inference, together with the RTL processing-element designs and the
+  evaluation scripts that reproduce the results in the MICRO 2026 paper.
+type: software
+repository-code: "https://github.com/SeoLabCornell/HBQ"
+license: MIT
+authors:
+  - family-names: Chen
+    given-names: Chun-Ting
+  - family-names: Han
+    given-names: Dongmin
+  - family-names: Mun
+    given-names: Hangyeol
+  - family-names: Hyun
+    given-names: Jake
+  - family-names: Raha
+    given-names: Arnab
+  - family-names: Agarwal
+    given-names: Amit
+  - family-names: Anders
+    given-names: Mark
+  - family-names: Abdelfattah
+    given-names: Mohamed
+  - family-names: Seo
+    given-names: Jae-sun
+keywords:
+  - large language models
+  - post-training quantization
+  - block quantization
+  - microscaling formats
+  - hardware accelerator
+preferred-citation:
+  type: conference-paper
+  title: >-
+    HBQ: Hierarchical Scaling Block Quantization with Hardware-Efficiency-Aware Design for
+    Accurate LLM Inference
+  authors:
+    - family-names: Chen
+      given-names: Chun-Ting
+    - family-names: Han
+      given-names: Dongmin
+    - family-names: Mun
+      given-names: Hangyeol
+    - family-names: Hyun
+      given-names: Jake
+    - family-names: Raha
+      given-names: Arnab
+    - family-names: Agarwal
+      given-names: Amit
+    - family-names: Anders
+      given-names: Mark
+    - family-names: Abdelfattah
+      given-names: Mohamed
+    - family-names: Seo
+      given-names: Jae-sun
+  collection-title: >-
+    Proceedings of the 59th IEEE/ACM International Symposium on Microarchitecture (MICRO)
+  year: 2026
+  url: "https://arxiv.org/abs/2609.00450"
+  identifiers:
+    - type: other
+      value: "arXiv:2609.00450"
+      description: arXiv preprint
