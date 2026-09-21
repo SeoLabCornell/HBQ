@@ -29,7 +29,7 @@ WinoGrande and PIQA). Area per MAC is from TSMC 28nm synthesis. Full results acr
 models (Llama-2-7B, Llama-3-8B, Llama-3.1-70B, Llama-3.2-3B, Qwen2.5-3B/7B, Mixtral-8x7B) are in
 the paper.
 
-| Method | W/A<sup>a</sup> | Llama-3-8B PPL | 0-shot | Qwen2.5-3B PPL | 0-shot | Area/MAC (µm²) |
+| Method | W/A<sup>a</sup> | L3-8B PPL | L3-8B 0-shot | Q2.5-3B PPL | Q2.5-3B 0-shot | Area/MAC (µm²) |
 |---|---|---|---|---|---|---|
 | Baseline (FP16) | 16/16 | 6.14 | 77.2 | 8.01 | 73.6 | – |
 | AWQ | 4.13/16 | 6.53 | 76.5 | 8.46 | 72.6 | 200<sup>b</sup> |
@@ -39,8 +39,7 @@ the paper.
 | **HBQ-E** | 4.13/5.13 | 6.68 | 75.8 | 8.73 | 73.0 | 72 |
 | **HBQ-A** | 4.31/5.31 | **6.52** | **76.4** | **8.55** | **73.6** | 87 |
 
-Bold marks the best result among methods that quantize **both** weights and activations. AWQ is
-weight-only (W4/A16), so it is listed for reference rather than as a like-for-like comparison —
+AWQ is weight-only (W4/A16), so it is listed for reference rather than as a like-for-like comparison —
 it keeps activations in FP16 and, on Qwen2.5-3B, reaches a lower PPL (8.46) than any W&A-quantized
 method here, at 2.3× the area per MAC.
 
@@ -51,14 +50,19 @@ MicroScopiQ numbers are taken from its original paper.
 
 ### Reasoning task accuracy
 
-| Method | W/A/KV | 8B GSM8K | 8B HumanEval | 8B MMLU | 3B GSM8K | 3B HumanEval | 3B MMLU | Avg. |
+#### Without KV cache quantization
+
+| Method | W/A/KV | L3.1-8B-Ins GSM8K | L3.1-8B-Ins HumanEval | L3.1-8B-Ins MMLU | L3.2-3B-Ins GSM8K | L3.2-3B-Ins HumanEval | L3.2-3B-Ins MMLU | Avg. |
 |---|---|---|---|---|---|---|---|---|
-| *No KV cache quantization* | | | | | | | | |
 | Baseline (FP16) | 16/16/16 | 86.2 | 59.2 | 68.4 | 77.0 | 44.5 | 59.9 | 65.9 |
 | AWQ | 4/16/16 | **83.0** | **56.7** | **66.8** | 74.0 | 42.1 | **58.7** | 63.6 |
 | **HBQ-E** | 4/5/16 | 82.3 | 52.4 | 66.1 | 73.8 | **48.8** | 57.3 | 63.7 |
 | **HBQ-A** | 4/5/16 | **83.0** | 55.5 | 66.4 | **75.7** | 47.0 | 58.5 | **64.3** |
-| *With KV cache quantization* | | | | | | | | |
+
+#### With KV cache quantization
+
+| Method | W/A/KV | L3.1-8B-Ins GSM8K | L3.1-8B-Ins HumanEval | L3.1-8B-Ins MMLU | L3.2-3B-Ins GSM8K | L3.2-3B-Ins HumanEval | L3.2-3B-Ins MMLU | Avg. |
+|---|---|---|---|---|---|---|---|---|
 | MXFP | 4/4/4 | 35.0 | 15.2 | 42.0 | 20.7 | 12.8 | 39.0 | 27.5 |
 | MXFP | 4/8/4 | 64.4 | 33.5 | 59.7 | 60.5 | 36.6 | 53.1 | 51.3 |
 | NVFP | 4/4/4 | 68.0 | 45.1 | 60.6 | 61.9 | 35.4 | 51.4 | 53.4 |
@@ -66,8 +70,6 @@ MicroScopiQ numbers are taken from its original paper.
 | **HBQ-E** | 4/5/4 | 74.0 | 47.6 | 62.2 | 63.4 | **42.7** | 54.4 | 57.9 |
 | **HBQ-A** | 4/5/4 | **80.7** | **53.1** | **64.5** | **70.7** | 37.8 | **56.2** | **60.7** |
 
-8B = Llama-3.1-8B-Instruct, 3B = Llama-3.2-3B-Instruct. Bold marks the best quantized result in
-each column, within each group.
 
 ## Repository layout
 
